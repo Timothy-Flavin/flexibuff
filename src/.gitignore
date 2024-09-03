@@ -1,0 +1,6 @@
+__pycache__
+Learning
+*.npy
+*.pyxel
+\dist
+\default_dir
