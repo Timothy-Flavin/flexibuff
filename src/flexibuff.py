@@ -26,97 +26,39 @@ class FlexiBatch:
     terminated: Union[np.ndarray, torch.FloatTensor, None] = None
     memory_weights: Union[np.ndarray, torch.FloatTensor, None] = None
 
-    def to_torch(self, device):
-        floats = [
-            "obs",
-            "obs_",
-            "state",
-            "state_",
-            "global_rewards",
-            "global_auxiliary_rewards",
-            "individual_rewards",
-            "individual_auxiliary_rewards",
-            "continuous_actions",
-            "discrete_log_probs",
-            "continuous_log_probs",
-            "terminated",
-            "memory_weights",
-        ]
+    _floats = [
+        "obs",
+        "obs_",
+        "state",
+        "state_",
+        "global_rewards",
+        "global_auxiliary_rewards",
+        "individual_rewards",
+        "individual_auxiliary_rewards",
+        "continuous_actions",
+        "discrete_log_probs",
+        "continuous_log_probs",
+        "terminated",
+        "memory_weights",
+    ]
 
-        for f in floats:
+    def to_torch(self, device):
+        for f in self._floats:
             self.__dict__[f] = (
                 None
                 if self.__dict__[f] is None
                 else torch.from_numpy(self.__dict__[f]).float().to(device)
             )
-        # self.obs = (
-        #     None if self.obs is None else torch.from_numpy(self.obs).float().to(device)
-        # )
-        # self.obs_ = (
-        #     None
-        #     if self.obs_ is None
-        #     else torch.from_numpy(self.obs_).float().to(device)
-        # )
-        # self.state = (
-        #     None
-        #     if self.state is None
-        #     else torch.from_numpy(self.state).float().to(device)
-        # )
-        # self.state_ = (
-        #     None
-        #     if self.state_ is None
-        #     else torch.from_numpy(self.state_).float().to(device)
-        # )
-        # self.global_rewards = (
-        #     None
-        #     if self.global_rewards is None
-        #     else torch.from_numpy(self.global_rewards).float().to(device)
-        # )
-        # self.global_auxiliary_rewards = (
-        #     None
-        #     if self.global_auxiliary_rewards is None
-        #     else torch.from_numpy(self.global_auxiliary_rewards).float().to(device)
-        # )
-        # self.individual_rewards = (
-        #     None
-        #     if self.individual_rewards is None
-        #     else torch.from_numpy(self.individual_rewards).float().to(device)
-        # )
-        # self.individual_auxiliary_rewards = (
-        #     None
-        #     if self.individual_auxiliary_rewards is None
-        #     else torch.from_numpy(self.individual_auxiliary_rewards).float().to(device)
-        # )
         self.discrete_actions = (
             None
             if self.discrete_actions is None
             else torch.from_numpy(self.discrete_actions).long().to(device)
         )
-        # self.discrete_log_probs = (
-        #     None
-        #     if self.discrete_log_probs is None
-        #     else torch.from_numpy(self.discrete_log_probs).float().to(device)
-        # )
-        # self.continuous_log_probs = (
-        #     None
-        #     if self.continuous_log_probs is None
-        #     else torch.from_numpy(self.continuous_log_probs).float().to(device)
-        # )
         if self.action_mask is not None:
             for i, a in enumerate(self.action_mask):
                 self.action_mask[i] = torch.from_numpy(a).float().to(device)
             for i, a in enumerate(self.action_mask_):
                 self.action_mask_[i] = torch.from_numpy(a).float().to(device)
-        # self.terminated = (
-        #     None
-        #     if self.terminated is None
-        #     else torch.from_numpy(self.terminated).float().to(device)
-        # )
-        # self.memory_weights = (
-        #     None
-        #     if self.memory_weights is None
-        #     else torch.from_numpy(self.memory_weights).float().to(device)
-        # )
 
     def __str__(self, verbose=False):
         s = ""
@@ -157,6 +99,7 @@ class FlexiBatch:
             s += f"action_mask_: {self.action_mask_}\n"
             s += f"terminated: {self.terminated}\n"
             s += f"memory_weights: {self.memory_weights}\n"
+        return s
 
 
 class FlexibleBuffer:
@@ -282,8 +225,8 @@ class FlexibleBuffer:
         self.state = None
         self.state_ = None
         if state_size is not None:
-            self.state = np.zeros((n_agents, num_steps, state_size), dtype=np.float32)
-            self.state_ = np.zeros((n_agents, num_steps, state_size), dtype=np.float32)
+            self.state = np.zeros((num_steps, state_size), dtype=np.float32)
+            self.state_ = np.zeros((num_steps, state_size), dtype=np.float32)
 
         # If we have discrete actions set up discrete action buffer
         self.discrete_actions = None
@@ -294,9 +237,9 @@ class FlexibleBuffer:
             )
         self.discrete_log_probs = None
         if log_prob_discrete:
-            self.discrete_log_probs = -1 * np.ones(
+            self.discrete_log_probs = -1.0 * np.ones(
                 (n_agents, num_steps, len(discrete_action_cardinalities)),
-                dtype=np.int32,
+                dtype=np.float32,
             )
 
         # If we have continuous actions set up continuous buffer
@@ -322,7 +265,7 @@ class FlexibleBuffer:
         if global_reward:
             self.global_rewards = np.zeros(num_steps, dtype=np.float32)
         if global_auxiliary_reward:
-            self.global_auxiliary_rewards = np.zeros(n_agents, dtype=np.float32)
+            self.global_auxiliary_rewards = np.zeros(num_steps, dtype=np.float32)
         if individual_reward:
             self.individual_rewards = np.zeros((n_agents, num_steps), dtype=np.float32)
         if individual_auxiliary_reward:
@@ -338,14 +281,14 @@ class FlexibleBuffer:
             self.action_mask_ = []
             for dac in self.discrete_action_cardinalities:
                 self.action_mask.append(
-                    np.ones((n_agents, num_steps, dac)), dtype=np.float32
+                    np.ones((n_agents, num_steps, dac), dtype=np.float32)
                 )
                 self.action_mask_.append(
                     np.ones((n_agents, num_steps, dac), dtype=np.float32)
                 )
 
         # Indicates terminal steps of the environment not truncation
-        self.terminated = np.zeros((n_agents, num_steps), dtype=np.float32)
+        self.terminated = np.zeros((num_steps), dtype=np.float32)
 
         # The current save index of where new experience will be added to the
         # buffer
@@ -356,6 +299,23 @@ class FlexibleBuffer:
 
         self.episode_inds = None  # Track for efficient sampling later
         self.episode_lens = None
+
+        self.array_like_params = [
+            "obs",
+            "obs_",
+            "state",
+            "state_",
+            "global_rewards",
+            "global_auxiliary_rewards",
+            "individual_rewards",
+            "individual_auxiliary_rewards",
+            "discrete_actions",
+            "continuous_actions",
+            "discrete_log_probs",
+            "continuous_log_probs",
+            "terminated",
+            "memory_weights",
+        ]
 
     def _update_episode_index(self, idx):
         print("Not implemented yet")
@@ -377,6 +337,7 @@ class FlexibleBuffer:
         state_=None,
         discrete_log_probs=None,
         continuous_log_probs=None,
+        memory_weight=1.0,
     ):
         """
         Saves a step into the multi-agent memory buffer
@@ -407,31 +368,33 @@ class FlexibleBuffer:
         state: [float] The global state for centralized training methods with shape [state_size]
         state_: [float] The same as state but the next step
         """
+
         self.idx = self.idx % self.mem_size
+
         if self.obs is not None:
             if obs is None:
                 warnings.warn(
                     f"Warning, setting FlexibleBuffer.obs[{self.idx}] to nans because keyword argument obs=None"
                 )
-            self.obs[self.idx] = np.array(obs)
+            self.obs[:, self.idx] = np.array(obs)
             if obs_ is None:
                 warnings.warn(
                     f"Warning, setting FlexibleBuffer.obs_[{self.idx}] to nans because keyword argument obs_=None"
                 )
-            self.obs_[self.idx] = np.array(obs_)
+            self.obs_[:, self.idx] = np.array(obs_)
 
         if self.discrete_actions is not None:
             if discrete_actions is None:
                 warnings.warn(
                     f"Warning, setting FlexibleBuffer.discrete_actions[{self.idx}] to nans because keyword argument discrete_actions=None"
                 )
-            self.discrete_actions[self.idx] = np.array(discrete_actions)
+            self.discrete_actions[:, self.idx] = np.array(discrete_actions)
         if self.continuous_actions is not None:
             if continuous_actions is None:
                 warnings.warn(
                     f"Warning, setting FlexibleBuffer.continuous_actions[{self.idx}] to nans because keyword argument continuous_actions=None"
                 )
-            self.continuous_actions[self.idx] = continuous_actions
+            self.continuous_actions[:, self.idx] = continuous_actions
 
         if self.global_rewards is not None:
             if global_reward is None:
@@ -451,24 +414,28 @@ class FlexibleBuffer:
                 warnings.warn(
                     f"Warning, setting FlexibleBuffer.individual_rewards[{self.idx}] to nan because keyword argument individual_rewards=None"
                 )
-            self.individual_rewards[self.idx] = np.array(individual_rewards)
+            self.individual_rewards[:, self.idx] = np.array(individual_rewards)
         if self.individual_auxiliary_rewards is not None:
             if individual_auxiliary_rewards is None:
                 warnings.warn(
                     f"Warning, setting FlexibleBuffer.individual_auxiliary_rewards[{self.idx}] to nan because keyword argument individual_auxiliary_rewards=None"
                 )
-            self.individual_auxiliary_rewards[self.idx] = np.array(
+            self.individual_auxiliary_rewards[:, self.idx] = np.array(
                 individual_auxiliary_rewards
             )
 
         if self.action_mask is not None:
-            if action_mask is None:
+            if action_mask is None or action_mask_ is None:
                 warnings.warn(
                     f"Warning, setting FlexibleBuffer.action_mask[{self.idx}] and/or FlexibleBuffer.action_mask_[{self.idx}] to nan because keyword argument FlexibleBuffer.action_mask=None"
                 )
-            for i, dac in enumerate(self.discrete_action_cardinalities):
-                self.action_mask[i][self.idx] = action_mask[i]
-                self.action_mask_[i][self.idx] = action_mask_[i]
+                for i in range(len(self.discrete_action_cardinalities)):
+                    self.action_mask[i][:, self.idx] = np.nan
+                    self.action_mask_[i][:, self.idx] = np.nan
+            else:
+                for i, dac in enumerate(self.discrete_action_cardinalities):
+                    self.action_mask[i][:, self.idx] = action_mask[i]
+                    self.action_mask_[i][:, self.idx] = action_mask_[i]
 
         if self.state is not None:
             if state is None:
@@ -487,13 +454,19 @@ class FlexibleBuffer:
                 warnings.warn(
                     f"Warning, setting FlexibleBuffer.discrete_log_probs[{self.idx}] to nan because keyword argument discrete_log_probs=None"
                 )
-            self.discrete_log_probs[self.idx] = np.array(discrete_log_probs)
+                self.discrete_log_probs[:, self.idx] = np.nan
+            else:
+                self.discrete_log_probs[:, self.idx] = np.array(discrete_log_probs)
         if self.continuous_log_probs is not None:
             if continuous_log_probs is None:
                 warnings.warn(
                     f"Warning, setting FlexibleBuffer.continuous_log_probs[{self.idx}] to nan because keyword argument continuous_log_probs=None"
                 )
-            self.continuous_log_probs[self.idx] = np.array(continuous_log_probs)
+                self.continuous_log_probs[:, self.idx] = np.nan
+            else:
+                self.continuous_log_probs[:, self.idx] = np.array(continuous_log_probs)
+
+        self.memory_weights[self.idx] = memory_weight
 
         if terminated:
             self._update_episode_index(self.idx)  # For efficient sampling later
@@ -600,9 +573,9 @@ class FlexibleBuffer:
             torch.from_numpy(self.global_rewards[idx]).float()[:, None].to(device)
         )
         torch_auxiliary_rewards = None
-        if self.global_auxiliary_reward:
+        if self.global_auxiliary_rewards:
             torch_auxiliary_rewards = (
-                torch.from_numpy(self.auxiliary_rewards[idx])
+                torch.from_numpy(self.global_auxiliary_rewards[idx])
                 .float()[:, None]
                 .to(device)
             )
@@ -644,75 +617,56 @@ class FlexibleBuffer:
             self.path + self.name + "_steps_recorded.npy", np.array(self.steps_recorded)
         )
 
-        if self.obs is not None:
-            np.save(self.path + self.name + "_obs.npy", self.obs)
-        if self.obs_ is not None:
-            np.save(self.path + self.name + "_obs_.npy", self.obs_)
-        if self.state is not None:
-            np.save(self.path + self.name + "_state.npy", self.state)
-        if self.state_ is not None:
-            np.save(self.path + self.name + "_state_.npy", self.state_)
-        if self.global_rewards is not None:
-            np.save(self.path + self.name + "_global_rewards.npy", self.global_rewards)
-        if self.global_auxiliary_rewards is not None:
-            np.save(
-                self.path + self.name + "_global_auxiliary_rewards.npy",
-                self.global_auxiliary_rewards,
-            )
-        if self.obs is not None:
-            np.save(self.path + self.name + "_states.npy", self.obs)
-        if self.obs is not None:
-            np.save(self.path + self.name + "_states.npy", self.obs)
-        if self.obs is not None:
-            np.save(self.path + self.name + "_states.npy", self.obs)
-        if self.obs is not None:
-            np.save(self.path + self.name + "_states.npy", self.obs)
-        if self.obs is not None:
-            np.save(self.path + self.name + "_states.npy", self.obs)
-        if self.obs is not None:
-            np.save(self.path + self.name + "_states.npy", self.obs)
-        if self.obs is not None:
-            np.save(self.path + self.name + "_states.npy", self.obs)
-        if self.obs is not None:
-            np.save(self.path + self.name + "_states.npy", self.obs)
-        if self.obs is not None:
-            np.save(self.path + self.name + "_states.npy", self.obs)
+        for param in self.array_like_params:
+            if self.__dict__[param] is not None:
+                np.save(
+                    self.path + self.name + "_" + param + ".npy", self.__dict__[param]
+                )
+
+        for i, dac in enumerate(self.discrete_action_cardinalities):
+            if self.action_mask is not None:
+                np.save(
+                    self.path + self.name + f"_action_mask{i}.npy", self.action_mask[i]
+                )
+                np.save(
+                    self.path + self.name + f"_action_mask_{i}.npy",
+                    self.action_mask_[i],
+                )
 
     def load_from_drive(self):
         if not os.path.exists(self.path):
             print(f"path '{self.path}' does not exist yet. returning")
             return
         self.idx = np.load(self.path + self.name + "_idx.npy")
-        print(self.idx)
         self.steps_recorded = np.load(self.path + self.name + "_steps_recorded.npy")
-        self.obs = np.load(self.path + self.name + "_states.npy")[0 : self.num_steps]
-        self.obs_ = np.load(self.path + self.name + "_states_.npy")[0 : self.num_steps]
-        self.discrete_actions = np.load(self.path + self.name + "_actions.npy")[
-            0 : self.num_steps
-        ]
-        self.global_rewards = np.load(self.path + self.name + "_rewards.npy")[
-            0 : self.num_steps
-        ]
-        self.terminated = np.load(self.path + self.name + "_dones.npy")[
-            0 : self.num_steps
-        ]
-        if self.global_auxiliary_reward and os.path.exists(
-            self.path + self.name + "_expert_r.npy"
-        ):
-            self.auxiliary_rewards = np.load(self.path + self.name + "_expert_r.npy")[
-                0 : self.num_steps
-            ]
-        if self.action_mask is not None:
-            self.action_mask = np.load(self.path + self.name + "_legal.npy")[
-                0 : self.num_steps
-            ]
-            self.action_mask_ = np.load(self.path + self.name + "_legal_.npy")[
-                0 : self.num_steps
-            ]
-        # self.num_steps = self.global_rewards.shape[0]
 
-    def __str__(self, verbose=False):
-        s = ""
+        for param in self.array_like_params:
+            if os.path.exists(self.path + self.name + "_" + param + ".npy"):
+                self.__dict__[param] = np.load(
+                    self.path + self.name + "_" + param + ".npy"
+                )
+            else:
+                print(self.path + self.name + "_" + param + ".npy was not found")
+                self.__dict__[param] = None
+
+        for i, dac in enumerate(self.discrete_action_cardinalities):
+            if os.path.exists(
+                self.path + self.name + f"_action_mask{i}.npy"
+            ) and os.path.exists(self.path + self.name + f"_action_mask_{i}.npy"):
+                self.action_mask[i] = np.load(
+                    self.path + self.name + f"_action_mask{i}.npy"
+                )
+                self.action_mask_[i] = np.load(
+                    self.path + self.name + f"_action_mask_{i}.npy"
+                )
+            else:
+                print(self.path + self.name + f"_action_mask{i}.npy not found")
+                self.action_mask = None
+                self.action_mask_ = None
+                break
+
+    def __str__(self):
+        s = f"Buffer size: {self.mem_size}, steps_recorded: {self.steps_recorded}, {self.steps_recorded/self.mem_size*100}%, current idx: {self.idx} \n"
         s += f"obs: {self.obs is not None}\n"
         s += f"obs_: {self.obs_ is not None}\n"
         s += f"state: {self.state is not None}\n"
@@ -730,26 +684,23 @@ class FlexibleBuffer:
         s += f"terminated: {self.terminated is not None}\n"
         s += f"memory_weights: {self.memory_weights is not None}\n"
 
-        if not verbose:
-            s += " To see preview of the contents of each array set 'verbose' to True"
-
-        if verbose:
-            s += f"obs: {self.obs}\n"
-            s += f"obs_: {self.obs_}\n"
-            s += f"state: {self.state}\n"
-            s += f"state_: {self.state_}\n"
-            s += f"global_rewards: {self.global_rewards}\n"
-            s += f"global_auxiliary_rewards: {self.global_auxiliary_rewards}\n"
-            s += f"individual_rewards: {self.individual_rewards}\n"
-            s += f"individual_auxiliary_rewards: {self.individual_auxiliary_rewards}\n"
-            s += f"discrete_actions: {self.discrete_actions}\n"
-            s += f"continuous_actions: {self.continuous_actions}\n"
-            s += f"discrete_log_probs: {self.discrete_log_probs}\n"
-            s += f"continuous_log_probs: {self.continuous_log_probs}\n"
-            s += f"action_mask: {self.action_mask}\n"
-            s += f"action_mask_: {self.action_mask_}\n"
-            s += f"terminated: {self.terminated}\n"
-            s += f"memory_weights: {self.memory_weights}\n"
+        s += f"obs: {self.obs}\n"
+        s += f"obs_: {self.obs_}\n"
+        s += f"state: {self.state}\n"
+        s += f"state_: {self.state_}\n"
+        s += f"global_rewards: {self.global_rewards}\n"
+        s += f"global_auxiliary_rewards: {self.global_auxiliary_rewards}\n"
+        s += f"individual_rewards: {self.individual_rewards}\n"
+        s += f"individual_auxiliary_rewards: {self.individual_auxiliary_rewards}\n"
+        s += f"discrete_actions: {self.discrete_actions}\n"
+        s += f"continuous_actions: {self.continuous_actions}\n"
+        s += f"discrete_log_probs: {self.discrete_log_probs}\n"
+        s += f"continuous_log_probs: {self.continuous_log_probs}\n"
+        s += f"action_mask: {self.action_mask}\n"
+        s += f"action_mask_: {self.action_mask_}\n"
+        s += f"terminated: {self.terminated}\n"
+        s += f"memory_weights: {self.memory_weights}\n"
+        return s
 
     def summarize_buffer(self):
         n_elem = (
@@ -761,9 +712,9 @@ class FlexibleBuffer:
         if self.action_mask is not None:
             n_elem += np.size(self.action_mask) * 2
         er = ""
-        if self.auxiliary_rewards is not None:
+        if self.global_auxiliary_rewards is not None:
             er = "*2"
-            n_elem += np.size(self.auxiliary_rewards)
+            n_elem += np.size(self.global_auxiliary_rewards)
         print(
             f"Buffer size: {self.steps_recorded} / {self.mem_size} steps. Current idx: {self.idx}. discrete_action_cardinalities: {self.discrete_action_cardinalities}, state: {self.obs.shape[1]}"
         )
@@ -784,12 +735,12 @@ class FlexibleBuffer:
             if start == self.idx - 1:
                 looping = False
             rs[-1] += self.global_rewards[start]
-            if self.global_auxiliary_reward:
-                ex_rs[-1] += self.auxiliary_rewards[start]
+            if self.global_auxiliary_rewards:
+                ex_rs[-1] += self.global_auxiliary_rewards[start]
 
             if self.terminated[start] == 1:
                 rs.append(0)
-                if self.global_auxiliary_reward:
+                if self.global_auxiliary_rewards:
                     ex_rs.append(0)
 
             start += 1

@@ -4,3 +4,4 @@ Learning
 *.pyxel
 \dist
 \default_dir
+\test_save
