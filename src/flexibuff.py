@@ -25,6 +25,7 @@ class FlexiBatch:
     action_mask_: Optional[list] = None
     terminated: Union[np.ndarray, torch.FloatTensor, None] = None
     memory_weights: Union[np.ndarray, torch.FloatTensor, None] = None
+    verbose: bool = True
 
     _floats = [
         "obs",
@@ -60,7 +61,7 @@ class FlexiBatch:
             for i, a in enumerate(self.action_mask_):
                 self.action_mask_[i] = torch.from_numpy(a).float().to(device)
 
-    def __str__(self, verbose=False):
+    def __str__(self):
         s = ""
         s += f"obs: {self.obs is not None}\n"
         s += f"obs_: {self.obs_ is not None}\n"
@@ -79,10 +80,10 @@ class FlexiBatch:
         s += f"terminated: {self.terminated is not None}\n"
         s += f"memory_weights: {self.memory_weights is not None}\n"
 
-        if not verbose:
+        if not self.verbose:
             s += " To see preview of the contents of each array set 'verbose' to True"
 
-        if verbose:
+        if self.verbose:
             s += f"obs: {self.obs}\n"
             s += f"obs_: {self.obs_}\n"
             s += f"state: {self.state}\n"
@@ -182,9 +183,9 @@ class FlexibleBuffer:
 
     def __init__(
         self,
-        num_steps: int,
-        obs_size: int,
-        action_mask=[False],
+        num_steps: int = 10,
+        obs_size: int = 1,
+        action_mask=False,
         discrete_action_cardinalities=None,
         continious_action_dimension=None,
         path: str = "./default_dir/",
@@ -199,11 +200,11 @@ class FlexibleBuffer:
         log_prob_continuous: int = 0,  # int
         memory_weights: bool = False,
     ):
-        assert (
-            discrete_action_cardinalities is not None
-            or continious_action_dimension is not None
-        ), "'discrete_action_cardinalities' and 'continious_action_dimension' \
-            must not both be None so actions may be saved"
+        # assert (
+        #    discrete_action_cardinalities is not None
+        #    or continious_action_dimension is not None
+        # ), "'discrete_action_cardinalities' and 'continious_action_dimension' \
+        #    must not both be None so actions may be saved"
 
         self.num_agents = n_agents
         self.num_steps = num_steps
@@ -322,9 +323,9 @@ class FlexibleBuffer:
 
     def save_transition(
         self,
-        obs,
-        obs_,
-        terminated,
+        obs=None,
+        obs_=None,
+        terminated=None,
         discrete_actions=None,
         continuous_actions=None,
         global_reward=None,
@@ -504,13 +505,13 @@ class FlexibleBuffer:
         fb = FlexiBatch(
             obs=self.obs[:, idx] if self.obs is not None else None,
             obs_=self.obs_[:, idx] if self.obs_ is not None else None,
-            state=self.state[:, idx] if self.state is not None else None,
-            state_=self.state_[:, idx] if self.state_ is not None else None,
+            state=self.state[idx] if self.state is not None else None,
+            state_=self.state_[idx] if self.state_ is not None else None,
             global_rewards=(
-                self.global_rewards[:, idx] if self.global_rewards is not None else None
+                self.global_rewards[idx] if self.global_rewards is not None else None
             ),
             global_auxiliary_rewards=(
-                self.global_auxiliary_rewards[:, idx]
+                self.global_auxiliary_rewards[idx]
                 if self.global_auxiliary_rewards is not None
                 else None
             ),
@@ -546,9 +547,9 @@ class FlexibleBuffer:
             ),
             action_mask=action_mask,
             action_mask_=action_mask_,
-            terminated=self.terminated[:, idx] if self.terminated is not None else None,
+            terminated=self.terminated[idx] if self.terminated is not None else None,
             memory_weights=(
-                self.memory_weights[:, idx] if self.memory_weights is not None else None
+                self.memory_weights[idx] if self.memory_weights is not None else None
             ),
         )
 
@@ -560,51 +561,9 @@ class FlexibleBuffer:
     def sample_episodes(self, max_batch_size, torch=False, device="cuda"):
         print("Not implemented yet")
 
-    def sample_torch(self, batch_size, device):
-        size = min(self.idx, batch_size)
-        # print(f"steps recorded {self.steps_recorded}, mem_size: {self.mem_size}")
-        idx = np.random.choice(
-            min(self.steps_recorded, self.mem_size), size, replace=False
-        )
-        # print(idx)
-        torch_states = torch.from_numpy(self.obs[idx]).float().to(device)
-        torch_actions = torch.from_numpy(self.discrete_actions[idx]).long().to(device)
-        torch_rewards = (
-            torch.from_numpy(self.global_rewards[idx]).float()[:, None].to(device)
-        )
-        torch_auxiliary_rewards = None
-        if self.global_auxiliary_rewards:
-            torch_auxiliary_rewards = (
-                torch.from_numpy(self.global_auxiliary_rewards[idx])
-                .float()[:, None]
-                .to(device)
-            )
-        torch_states_ = torch.from_numpy(self.obs_[idx]).float().to(device)
-        torch_done = torch.from_numpy(self.terminated[idx]).long()[:, None].to(device)
-        torch_action_mask = None
-        torch_action_mask_ = None
-        if self.action_mask is not None:
-            torch_action_mask = (
-                torch.from_numpy(self.action_mask[idx]).long().to(device)
-            )
-            torch_action_mask_ = (
-                torch.from_numpy(self.action_mask_[idx]).long().to(device)
-            )
-
-        return (
-            torch_states,
-            torch_actions,
-            torch_rewards,
-            torch_auxiliary_rewards,
-            torch_states_,
-            torch_done,
-            torch_action_mask,
-            torch_action_mask_,
-        )
-
     def print_idx(self, idx):
         print(
-            f"State: {self.obs[idx]} | State_ {self.obs_[idx]}, action: {self.discrete_actions[idx]}, reward: {self.global_rewards[idx]}, done: {self.terminated[idx]}, legal: {self.action_mask[idx]}, legal_: {self.action_mask_[idx]}"
+            f"obs: {self.obs[idx]} | obs_ {self.obs_[idx]}, action: {self.discrete_actions[idx]}, reward: {self.global_rewards[idx]}, done: {self.terminated[idx]}, legal: {self.action_mask[idx]}, legal_: {self.action_mask_[idx]}"
         )
 
     def save_to_drive(self):
@@ -616,6 +575,7 @@ class FlexibleBuffer:
         np.save(
             self.path + self.name + "_steps_recorded.npy", np.array(self.steps_recorded)
         )
+        np.save(self.path + self.name + "_mem_size.npy", np.array(self.mem_size))
 
         for param in self.array_like_params:
             if self.__dict__[param] is not None:
@@ -633,7 +593,13 @@ class FlexibleBuffer:
                     self.action_mask_[i],
                 )
 
-    def load_from_drive(self):
+        if self.discrete_actions is not None:
+            np.save(
+                self.path + self.name + "_discrete_action_cardinalities.npy",
+                np.array(self.discrete_action_cardinalities),
+            )
+
+    def load_from_drive(self, set_sizes=True):
         if not os.path.exists(self.path):
             print(f"path '{self.path}' does not exist yet. returning")
             return
@@ -664,6 +630,84 @@ class FlexibleBuffer:
                 self.action_mask = None
                 self.action_mask_ = None
                 break
+        if os.path.exists(self.path + self.name + "_discrete_action_cardinalities.npy"):
+            self.discrete_action_cardinalities = np.load(
+                self.path + self.name + "_discrete_action_cardinalities.npy"
+            )
+
+    @staticmethod
+    def load(path, name):
+        if not os.path.exists(path) or not os.path.exists(path + name + "_idx.npy"):
+            print(
+                f"path '{path}' or '{path + name + '_idx.npy'}' does not exist yet. returning"
+            )
+            return
+        fb = FlexibleBuffer()
+        fb.path = path
+        fb.name = name
+
+        fb.idx = np.load(path + name + "_idx.npy")
+        fb.steps_recorded = np.load(path + name + "_steps_recorded.npy")
+        fb.mem_size = np.load(path + name + "_mem_size.npy")
+
+        if os.path.exists(path + name + "_discrete_action_cardinalities.npy"):
+            fb.discrete_action_cardinalities = np.load(
+                fb.path + fb.name + "_discrete_action_cardinalities.npy"
+            )
+
+        for param in fb.array_like_params:
+            if os.path.exists(fb.path + fb.name + "_" + param + ".npy"):
+                fb.__dict__[param] = np.load(fb.path + fb.name + "_" + param + ".npy")
+            else:
+                print(fb.path + fb.name + "_" + param + ".npy was not found")
+                fb.__dict__[param] = None
+
+        fb.action_mask = []
+        fb.action_mask_ = []
+        for i, dac in enumerate(fb.discrete_action_cardinalities):
+            if os.path.exists(
+                fb.path + fb.name + f"_action_mask{i}.npy"
+            ) and os.path.exists(fb.path + fb.name + f"_action_mask_{i}.npy"):
+                fb.action_mask.append(
+                    np.load(fb.path + fb.name + f"_action_mask{i}.npy")
+                )
+                fb.action_mask_.append(
+                    np.load(fb.path + fb.name + f"_action_mask_{i}.npy")
+                )
+            else:
+                print(fb.path + fb.name + f"_action_mask{i}.npy not found")
+                fb.action_mask = None
+                fb.action_mask_ = None
+                break
+        return fb
+
+    @staticmethod
+    def save(fb):
+        if not os.path.exists(fb.path):
+            print(f"Path did not exist so making '{fb.path}'")
+            os.makedirs(fb.path)
+
+        np.save(fb.path + fb.name + "_idx.npy", np.array(fb.idx))
+        np.save(fb.path + fb.name + "_steps_recorded.npy", np.array(fb.steps_recorded))
+        np.save(fb.path + fb.name + "_mem_size.npy", np.array(fb.mem_size))
+
+        for param in fb.array_like_params:
+            if fb.__dict__[param] is not None:
+                np.save(fb.path + fb.name + "_" + param + ".npy", fb.__dict__[param])
+
+        for i, dac in enumerate(fb.discrete_action_cardinalities):
+            if fb.action_mask is not None:
+                np.save(fb.path + fb.name + f"_action_mask{i}.npy", fb.action_mask[i])
+                np.save(
+                    fb.path + fb.name + f"_action_mask_{i}.npy",
+                    fb.action_mask_[i],
+                )
+
+        if fb.discrete_actions is not None:
+            np.save(
+                fb.path + fb.name + "_discrete_action_cardinalities.npy",
+                np.array(fb.discrete_action_cardinalities),
+            )
 
     def __str__(self):
         s = f"Buffer size: {self.mem_size}, steps_recorded: {self.steps_recorded}, {self.steps_recorded/self.mem_size*100}%, current idx: {self.idx} \n"
@@ -676,6 +720,7 @@ class FlexibleBuffer:
         s += f"individual_rewards: {self.individual_rewards is not None}\n"
         s += f"individual_auxiliary_rewards: {self.individual_auxiliary_rewards is not None}\n"
         s += f"discrete_actions: {self.discrete_actions is not None}\n"
+        s += f"discrete_action_cardinalities: {self.discrete_action_cardinalities}\n"
         s += f"continuous_actions: {self.continuous_actions is not None}\n"
         s += f"discrete_log_probs: {self.discrete_log_probs is not None}\n"
         s += f"continuous_log_probs: {self.continuous_log_probs is not None}\n"

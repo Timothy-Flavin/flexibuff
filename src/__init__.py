@@ -38,6 +38,7 @@ if __name__ == "__main__":
         memory_weights=True,
     )
 
+    print(obs[0, 0, :])
     # print(fb)
     fb.save_transition(
         obs=np.copy(obs[:, 0, :]),
@@ -47,8 +48,8 @@ if __name__ == "__main__":
         continuous_actions=np.array([[0.1, 0.5], [0.2, 1.0]]),
         global_reward=1.0,
         global_auxiliary_reward=0.1,
-        individual_rewards=0.5,
-        individual_auxiliary_rewards=0.4,
+        individual_rewards=np.array([0.5, 0.5]),
+        individual_auxiliary_rewards=np.array([0.4, 0.4]),
         action_mask=[np.array([[0, 1], [1, 0]]), np.array([[0, 0, 1], [0, 1, 0]])],
         action_mask_=[np.array([[0, 0], [0, 0]]), np.array([[0, 1, 0], [1, 0, 0]])],
         memory_weight=1.5,
@@ -57,7 +58,14 @@ if __name__ == "__main__":
         state=np.copy(obs[0, 0, :]),
         state_=np.copy(obs[1, 0, :]),
     )
-    fb.save_to_drive()
-    fb.load_from_drive()
+    FlexibleBuffer.save(fb)
 
-    print(fb)
+    fb2 = FlexibleBuffer.load(
+        path="../test_save/",
+        name="all_attributes",
+    )
+    samp = fb2.sample_transitions(2)
+    samp.to_torch("cuda")
+    print(samp)
+
+    # print(fb2)
