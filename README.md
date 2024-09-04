@@ -16,6 +16,7 @@ simultaneous human and MDP rewards for RLHF + RL.
 
 For Mixed discrete and continuous actions, actions will be saved and
 returned in the format
+```
     discrete_actions
         [   # Discrete action tensor
             [d0_s0,d1_s0,d2_s0,...,dN-1_s0],
@@ -30,7 +31,7 @@ returned in the format
                         ...,
             [c0_sB,c1_sB,c2_sB,...,cM-1_sB]
         ],
-
+```
 where d0_s0 refers to discrete dimension 0 out of 'N' dimensions
 sample 0 out of 'B' batch size timesteps. c2_s1 would refer to continuous
 dimension 2 our of 'M' sample timestep 1 our of 'B' batch size.
