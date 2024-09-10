@@ -1,3 +1,39 @@
+Flexibuff is a minimalistic library designed to store replay 
+buffers and episode rollouts for multi agent RL, but it works
+just as well for single agent RL. 
+
+## Motivation
+
+Flexibuff came to be due to frustrations with integrating many kinds of RL models on the
+same environment for benchmark purposes. Some models like 
+DeepQ learning only require `[state,state_,action,reward,terminated]`
+where transitions can be sampled in any order off policy. Other
+algorithms like vanilla policy gradient require memory rollouts
+in chronilogical order to calculate the discounted rewards G. 
+Other algorithms still such as QMIX and other CTDE methods
+require many agent buffers to be sampled synchronously, meaning
+that the same timestep is needed for each agent to perform mixing.
+More exotic still, some RL algorithms such as TAMER maintain a 
+second reward signal which comes from human preference. Some models
+also have mixed action spaces or multiple outputs at the same
+time such as a search and rescue robot which must operate a radio
+and navigate itself at the same time. Lastly, some policy gradient
+algorithms require log probabilities to be stored where DeepQ does
+not, but any of the algorithms above might use memory weighting
+to bias transition sampling or other effects.
+
+Comparing these methods to each other and programming memory 
+buffers for each kind of agent takes a lot of time and code and
+it introduces yet another step of the process where there could
+be errors and precious debugging time. Flexibuff claims to fit
+every one of these use cases at one time with optional storage
+for human rewards, log probabilities, memory weights, and more. 
+Additionally, Flexibuff can sample either transitions or entire
+chronologically ordered episodes synchronized to all agents with
+samples returned as either numpy arrays or torch tensors. 
+
+## Bare bones documentation (WIP)
+
 Flexible Buffer supports numpy and torch tensor outputs formats,
 but all memories are held internally as numpy buffers because
 Torch.from_numpy() will share the same memory either way in RAM
@@ -74,3 +110,8 @@ init variables:
         storing a single probability so it would be 1.
     memory_weights: bool whether or not to store weights along with each timestep
         for memory weighting or another purpose
+
+## Methods of Interest:
+
+`save_transition`: Takes the actions / observations / states, etc from a step and saves it.
+`sample_transitions`: Samples unordered transitions 

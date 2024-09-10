@@ -318,8 +318,37 @@ class FlexibleBuffer:
             "memory_weights",
         ]
 
+    def _between(self, num, lastidx, idx):
+        lower = lastidx
+        upper = idx
+        if idx < lastidx:
+            upper = lastidx + idx + self.mem_size - lastidx
+            if num < idx:
+                return True
+        if num < upper and num >= lower:
+            return True
+        return False
+
     def _update_episode_index(self, idx):
-        print("Not implemented yet")
+        if idx < self.steps_recorded:
+            self.steps_recorded = self.mem_size
+        else:
+            self.steps_recorded = idx
+        # If nothing has been recorded yet, initialize things
+        if self.episode_lens is None and self.episode_inds is None:
+            self.episode_inds = [0]
+            self.episode_lens = []
+            self.episode_lens.append(idx)
+            self.episode_inds.append(idx)
+        else:
+            while self._between(self.episode_inds[0], self.episode_inds[-1], idx):
+                self.episode_inds.pop(0)
+                self.episode_lens.pop(0)
+            if idx < self.episode_inds[-1]:
+                self.episode_lens.append(idx + self.mem_size - self.episode_inds[-1])
+            else:
+                self.episode_lens.append(idx - self.episode_inds[-1])
+            self.episode_inds.append(idx)
 
     def save_transition(
         self,
@@ -467,30 +496,32 @@ class FlexibleBuffer:
             else:
                 self.continuous_log_probs[:, self.idx] = np.array(continuous_log_probs)
 
-        self.memory_weights[self.idx] = memory_weight
+        if self.memory_weights is not None:
+            self.memory_weights[self.idx] = memory_weight
 
         if terminated:
-            self._update_episode_index(self.idx)  # For efficient sampling later
+            self._update_episode_index(self.idx + 1)  # For efficient sampling later
 
         self.terminated[self.idx] = float(terminated)
         self.idx += 1
         self.steps_recorded = max(self.idx, self.steps_recorded)
 
     def sample_transitions(
-        self, batch_size, weighted=False, torch=False, device="cuda"
+        self, batch_size=256, weighted=False, torch=False, device="cuda", idx=None
     ):
-        size = min(self.idx, batch_size)
-        if weighted:
-            idx = np.random.choice(
-                min(self.steps_recorded, self.mem_size),
-                size,
-                replace=False,
-                p=self.memory_weights[0 : self.steps_recorded],
-            )
-        else:
-            idx = np.random.choice(
-                min(self.steps_recorded, self.mem_size), size, replace=False
-            )
+        size = min(self.steps_recorded, batch_size)
+        if idx is None:
+            if weighted:
+                idx = np.random.choice(
+                    min(self.steps_recorded, self.mem_size),
+                    size,
+                    replace=False,
+                    p=self.memory_weights[0 : self.steps_recorded],
+                )
+            else:
+                idx = np.random.choice(
+                    min(self.steps_recorded, self.mem_size), size, replace=False
+                )
 
         if self.action_mask is not None:
             action_mask = []
@@ -554,12 +585,29 @@ class FlexibleBuffer:
         )
 
         if torch:
-            fb.to_torch()
+            fb.to_torch(device=device)
 
         return fb
 
-    def sample_episodes(self, max_batch_size, torch=False, device="cuda"):
-        print("Not implemented yet")
+    def sample_episodes(self, max_batch_size=256, torch=False, device="cuda"):
+        tempidx = self.episode_inds.copy()
+        templen = self.episode_lens.copy()
+
+        batch_idx = []
+        batch_len = []
+        tot_size = 0
+        while tot_size < max_batch_size and len(templen) > 0:
+            i = np.random.randint(0, len(templen))
+            batch_idx.append(tempidx.pop(i))
+            batch_len.append(templen.pop(i))
+
+        episodes = []
+        for i in range(len(batch_idx)):
+            idx = np.mod(
+                np.arange(batch_idx[i], batch_idx[i] + batch_len[i]), self.mem_size
+            )
+            episodes.append(self.sample_transitions(torch=torch, idx=idx))
+        return episodes
 
     def print_idx(self, idx):
         print(
@@ -635,6 +683,13 @@ class FlexibleBuffer:
                 self.path + self.name + "_discrete_action_cardinalities.npy"
             )
 
+        self.episode_inds = np.load(
+            self.path + self.name + "_episode_inds.npy"
+        ).tolist()
+        self.episode_lens = np.load(
+            self.path + self.name + "_episode_lens.npy"
+        ).tolist()
+
     @staticmethod
     def load(path, name):
         if not os.path.exists(path) or not os.path.exists(path + name + "_idx.npy"):
@@ -679,6 +734,10 @@ class FlexibleBuffer:
                 fb.action_mask = None
                 fb.action_mask_ = None
                 break
+
+        fb.episode_inds = np.load(fb.path + fb.name + "_episode_inds.npy").tolist()
+        fb.episode_lens = np.load(fb.path + fb.name + "_episode_lens.npy").tolist()
+
         return fb
 
     @staticmethod
@@ -690,6 +749,8 @@ class FlexibleBuffer:
         np.save(fb.path + fb.name + "_idx.npy", np.array(fb.idx))
         np.save(fb.path + fb.name + "_steps_recorded.npy", np.array(fb.steps_recorded))
         np.save(fb.path + fb.name + "_mem_size.npy", np.array(fb.mem_size))
+        np.save(fb.path + fb.name + "_episode_inds.npy", np.array(fb.episode_inds))
+        np.save(fb.path + fb.name + "_episode_lens.npy", np.array(fb.episode_lens))
 
         for param in fb.array_like_params:
             if fb.__dict__[param] is not None:
