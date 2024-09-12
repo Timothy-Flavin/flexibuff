@@ -192,7 +192,7 @@ class FlexibleBuffer:
         name: str = "flexibuff_test",
         n_agents: int = 1,
         state_size: int = None,
-        global_reward: bool = True,
+        global_reward: bool = False,
         global_auxiliary_reward: bool = False,
         individual_reward: bool = False,
         individual_auxiliary_reward: bool = False,
@@ -614,81 +614,81 @@ class FlexibleBuffer:
             f"obs: {self.obs[idx]} | obs_ {self.obs_[idx]}, action: {self.discrete_actions[idx]}, reward: {self.global_rewards[idx]}, done: {self.terminated[idx]}, legal: {self.action_mask[idx]}, legal_: {self.action_mask_[idx]}"
         )
 
-    def save_to_drive(self):
-        if not os.path.exists(self.path):
-            print(f"Path did not exist so making '{self.path}'")
-            os.makedirs(self.path)
+    # def save_to_drive(self):
+    #     if not os.path.exists(self.path):
+    #         print(f"Path did not exist so making '{self.path}'")
+    #         os.makedirs(self.path)
 
-        np.save(self.path + self.name + "_idx.npy", np.array(self.idx))
-        np.save(
-            self.path + self.name + "_steps_recorded.npy", np.array(self.steps_recorded)
-        )
-        np.save(self.path + self.name + "_mem_size.npy", np.array(self.mem_size))
+    #     np.save(self.path + self.name + "_idx.npy", np.array(self.idx))
+    #     np.save(
+    #         self.path + self.name + "_steps_recorded.npy", np.array(self.steps_recorded)
+    #     )
+    #     np.save(self.path + self.name + "_mem_size.npy", np.array(self.mem_size))
 
-        for param in self.array_like_params:
-            if self.__dict__[param] is not None:
-                np.save(
-                    self.path + self.name + "_" + param + ".npy", self.__dict__[param]
-                )
+    #     for param in self.array_like_params:
+    #         if self.__dict__[param] is not None:
+    #             np.save(
+    #                 self.path + self.name + "_" + param + ".npy", self.__dict__[param]
+    #             )
 
-        for i, dac in enumerate(self.discrete_action_cardinalities):
-            if self.action_mask is not None:
-                np.save(
-                    self.path + self.name + f"_action_mask{i}.npy", self.action_mask[i]
-                )
-                np.save(
-                    self.path + self.name + f"_action_mask_{i}.npy",
-                    self.action_mask_[i],
-                )
+    #     for i, dac in enumerate(self.discrete_action_cardinalities):
+    #         if self.action_mask is not None:
+    #             np.save(
+    #                 self.path + self.name + f"_action_mask{i}.npy", self.action_mask[i]
+    #             )
+    #             np.save(
+    #                 self.path + self.name + f"_action_mask_{i}.npy",
+    #                 self.action_mask_[i],
+    #             )
 
-        if self.discrete_actions is not None:
-            np.save(
-                self.path + self.name + "_discrete_action_cardinalities.npy",
-                np.array(self.discrete_action_cardinalities),
-            )
+    #     if self.discrete_actions is not None:
+    #         np.save(
+    #             self.path + self.name + "_discrete_action_cardinalities.npy",
+    #             np.array(self.discrete_action_cardinalities),
+    #         )
 
-    def load_from_drive(self, set_sizes=True):
-        if not os.path.exists(self.path):
-            print(f"path '{self.path}' does not exist yet. returning")
-            return
-        self.idx = np.load(self.path + self.name + "_idx.npy")
-        self.steps_recorded = np.load(self.path + self.name + "_steps_recorded.npy")
+    # def load_from_drive(self, set_sizes=True):
+    #     if not os.path.exists(self.path):
+    #         print(f"path '{self.path}' does not exist yet. returning")
+    #         return
+    #     self.idx = np.load(self.path + self.name + "_idx.npy")
+    #     self.steps_recorded = np.load(self.path + self.name + "_steps_recorded.npy")
 
-        for param in self.array_like_params:
-            if os.path.exists(self.path + self.name + "_" + param + ".npy"):
-                self.__dict__[param] = np.load(
-                    self.path + self.name + "_" + param + ".npy"
-                )
-            else:
-                print(self.path + self.name + "_" + param + ".npy was not found")
-                self.__dict__[param] = None
+    #     for param in self.array_like_params:
+    #         if os.path.exists(self.path + self.name + "_" + param + ".npy"):
+    #             self.__dict__[param] = np.load(
+    #                 self.path + self.name + "_" + param + ".npy"
+    #             )
+    #         else:
+    #             print(self.path + self.name + "_" + param + ".npy was not found")
+    #             self.__dict__[param] = None
 
-        for i, dac in enumerate(self.discrete_action_cardinalities):
-            if os.path.exists(
-                self.path + self.name + f"_action_mask{i}.npy"
-            ) and os.path.exists(self.path + self.name + f"_action_mask_{i}.npy"):
-                self.action_mask[i] = np.load(
-                    self.path + self.name + f"_action_mask{i}.npy"
-                )
-                self.action_mask_[i] = np.load(
-                    self.path + self.name + f"_action_mask_{i}.npy"
-                )
-            else:
-                print(self.path + self.name + f"_action_mask{i}.npy not found")
-                self.action_mask = None
-                self.action_mask_ = None
-                break
-        if os.path.exists(self.path + self.name + "_discrete_action_cardinalities.npy"):
-            self.discrete_action_cardinalities = np.load(
-                self.path + self.name + "_discrete_action_cardinalities.npy"
-            )
+    #     for i, dac in enumerate(self.discrete_action_cardinalities):
+    #         if os.path.exists(
+    #             self.path + self.name + f"_action_mask{i}.npy"
+    #         ) and os.path.exists(self.path + self.name + f"_action_mask_{i}.npy"):
+    #             self.action_mask[i] = np.load(
+    #                 self.path + self.name + f"_action_mask{i}.npy"
+    #             )
+    #             self.action_mask_[i] = np.load(
+    #                 self.path + self.name + f"_action_mask_{i}.npy"
+    #             )
+    #         else:
+    #             print(self.path + self.name + f"_action_mask{i}.npy not found")
+    #             self.action_mask = None
+    #             self.action_mask_ = None
+    #             break
+    #     if os.path.exists(self.path + self.name + "_discrete_action_cardinalities.npy"):
+    #         self.discrete_action_cardinalities = np.load(
+    #             self.path + self.name + "_discrete_action_cardinalities.npy"
+    #         )
 
-        self.episode_inds = np.load(
-            self.path + self.name + "_episode_inds.npy"
-        ).tolist()
-        self.episode_lens = np.load(
-            self.path + self.name + "_episode_lens.npy"
-        ).tolist()
+    #     self.episode_inds = np.load(
+    #         self.path + self.name + "_episode_inds.npy"
+    #     ).tolist()
+    #     self.episode_lens = np.load(
+    #         self.path + self.name + "_episode_lens.npy"
+    #     ).tolist()
 
     @staticmethod
     def load(path, name):
@@ -807,6 +807,12 @@ class FlexibleBuffer:
         s += f"terminated: {self.terminated}\n"
         s += f"memory_weights: {self.memory_weights}\n"
         return s
+
+    def reset(self):
+        self.idx = 0
+        self.steps_recorded = 0
+        self.episode_inds = None
+        self.episode_lens = None
 
     def summarize_buffer(self):
         n_elem = (

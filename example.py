@@ -1,4 +1,4 @@
-# Example using flexibuff
+# Example single agent using flexibuff
 # with torch dqn example modified from
 # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 import gym
