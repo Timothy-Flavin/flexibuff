@@ -770,6 +770,26 @@ class FlexibleBuffer:
                 np.array(fb.discrete_action_cardinalities),
             )
 
+    @staticmethod
+    def sum_batch_rewards(batch: FlexiBatch, agent_num: int = 0):
+        bgr = 0 if batch.global_rewards is None else batch.global_rewards
+        bgar = (
+            0
+            if batch.global_auxiliary_rewards is None
+            else batch.global_auxiliary_rewards
+        )
+        bir = (
+            0
+            if batch.individual_rewards is None
+            else batch.individual_rewards[agent_num]
+        )
+        biar = (
+            0
+            if batch.individual_auxiliary_rewards is None
+            else batch.individual_auxiliary_rewards[agent_num]
+        )
+        return bgr + bgar + bir + biar
+
     def __str__(self):
         s = f"Buffer size: {self.mem_size}, steps_recorded: {self.steps_recorded}, {self.steps_recorded/self.mem_size*100}%, current idx: {self.idx} \n"
         s += f"obs: {self.obs is not None}\n"

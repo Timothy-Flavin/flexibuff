@@ -2,7 +2,6 @@
 # with torch dqn example modified from
 # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 import gym
-import numpy as np
 from src.flexibuff import FlexibleBuffer
 
 import random
