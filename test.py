@@ -151,7 +151,8 @@ if __name__ == "__main__":
         path="./test_save/",
         name="all_attributes",
     )
-    samp = fb2.sample_transitions(2)
+    samp = fb2.sample_transitions(2, as_torch=False)
+    print(samp)
     samp.to_torch("cuda")
     # print(samp)
 

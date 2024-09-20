@@ -507,7 +507,7 @@ class FlexibleBuffer:
         self.steps_recorded = max(self.idx, self.steps_recorded)
 
     def sample_transitions(
-        self, batch_size=256, weighted=False, torch=False, device="cuda", idx=None
+        self, batch_size=256, weighted=False, as_torch=False, device="cuda", idx=None
     ):
         size = min(self.steps_recorded, batch_size)
         if idx is None:
@@ -584,12 +584,12 @@ class FlexibleBuffer:
             ),
         )
 
-        if torch:
+        if as_torch:
             fb.to_torch(device=device)
 
         return fb
 
-    def sample_episodes(self, max_batch_size=256, torch=False, device="cuda"):
+    def sample_episodes(self, max_batch_size=256, as_torch=False, device="cuda"):
         tempidx = self.episode_inds.copy()
         templen = self.episode_lens.copy()
 
@@ -599,14 +599,15 @@ class FlexibleBuffer:
         while tot_size < max_batch_size and len(templen) > 0:
             i = np.random.randint(0, len(templen))
             batch_idx.append(tempidx.pop(i))
-            batch_len.append(templen.pop(i))
+            batch_len.append(min(templen.pop(i), max_batch_size - tot_size))
+            tot_size += batch_len[-1]
 
         episodes = []
         for i in range(len(batch_idx)):
             idx = np.mod(
                 np.arange(batch_idx[i], batch_idx[i] + batch_len[i]), self.mem_size
             )
-            episodes.append(self.sample_transitions(torch=torch, idx=idx))
+            episodes.append(self.sample_transitions(as_torch=as_torch, idx=idx))
         return episodes
 
     def print_idx(self, idx):
