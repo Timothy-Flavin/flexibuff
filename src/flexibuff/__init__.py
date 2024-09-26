@@ -607,7 +607,7 @@ class FlexibleBuffer:
             idx = np.mod(
                 np.arange(batch_idx[i], batch_idx[i] + batch_len[i]), self.mem_size
             )
-            episodes.append(self.sample_transitions(as_torch=as_torch, idx=idx))
+            episodes.append(self.sample_transitions(as_torch=as_torch, idx=idx, device=device))
         return episodes
 
     def print_idx(self, idx):
