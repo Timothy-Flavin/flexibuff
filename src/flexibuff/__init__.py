@@ -589,14 +589,22 @@ class FlexibleBuffer:
 
         return fb
 
-    def sample_episodes(self, max_batch_size=256, as_torch=False, device="cuda"):
+    def sample_episodes(
+        self, max_batch_size=256, as_torch=False, device="cuda", n_episodes=None
+    ):
         tempidx = self.episode_inds.copy()
         templen = self.episode_lens.copy()
 
         batch_idx = []
         batch_len = []
         tot_size = 0
-        while tot_size < max_batch_size and len(templen) > 0:
+        if n_episodes is None:
+            n_episodes = len(templen)
+        while (
+            tot_size < max_batch_size
+            and len(templen) > 0
+            and len(batch_idx) < n_episodes
+        ):
             i = np.random.randint(0, len(templen))
             batch_idx.append(tempidx.pop(i))
             batch_len.append(min(templen.pop(i), max_batch_size - tot_size))
@@ -607,7 +615,9 @@ class FlexibleBuffer:
             idx = np.mod(
                 np.arange(batch_idx[i], batch_idx[i] + batch_len[i]), self.mem_size
             )
-            episodes.append(self.sample_transitions(as_torch=as_torch, idx=idx, device=device))
+            episodes.append(
+                self.sample_transitions(as_torch=as_torch, idx=idx, device=device)
+            )
         return episodes
 
     def print_idx(self, idx):
