@@ -152,9 +152,9 @@ class FlexibleBuffer:
             discrete portion of the actions.
         discrete_action_cardinalities: [int] List of integers to denote the
             number of discrete action choices for each discrete action output
-        continious_action_dimension: int Number of continuous action dimensions
+        continuous_action_dimension: int Number of continuous action dimensions
             (Note: suppose a network outputs a distribution for each
-            continuous dimension like [mean,std], then the continious_action_dimension
+            continuous dimension like [mean,std], then the continuous_action_dimension
             should be set to 2*n_action_dimensions because flexibuff will save
             exactly as many numbers as specified here)
         path: String the path to where flexibuff will be saved if a path is not
@@ -187,7 +187,7 @@ class FlexibleBuffer:
         obs_size: int = 1,
         action_mask=False,
         discrete_action_cardinalities=None,
-        continious_action_dimension=None,
+        continuous_action_dimension=None,
         path: str = "./default_dir/",
         name: str = "flexibuff_test",
         n_agents: int = 1,
@@ -202,8 +202,8 @@ class FlexibleBuffer:
     ):
         # assert (
         #    discrete_action_cardinalities is not None
-        #    or continious_action_dimension is not None
-        # ), "'discrete_action_cardinalities' and 'continious_action_dimension' \
+        #    or continuous_action_dimension is not None
+        # ), "'discrete_action_cardinalities' and 'continuous_action_dimension' \
         #    must not both be None so actions may be saved"
 
         self.num_agents = n_agents
@@ -211,7 +211,7 @@ class FlexibleBuffer:
         self.path = path
         self.name = name
         self.discrete_action_cardinalities = discrete_action_cardinalities
-        self.continious_action_dimension = continious_action_dimension
+        self.continuous_action_dimension = continuous_action_dimension
         self.mem_size = num_steps
         self.obs = np.zeros((n_agents, num_steps, obs_size), dtype=np.float32)
         self.obs_ = np.zeros((n_agents, num_steps, obs_size), dtype=np.float32)
@@ -245,9 +245,9 @@ class FlexibleBuffer:
 
         # If we have continuous actions set up continuous buffer
         self.continuous_actions = None
-        if continious_action_dimension is not None:
+        if continuous_action_dimension is not None:
             self.continuous_actions = np.zeros(
-                (n_agents, num_steps, continious_action_dimension),
+                (n_agents, num_steps, continuous_action_dimension),
                 dtype=np.float32,
             )
         self.continuous_log_probs = None

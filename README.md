@@ -83,9 +83,9 @@ init variables:
         discrete portion of the actions.
     discrete_action_cardinalities: [int] List of integers to denote the
         number of discrete action choices for each discrete action output
-    continious_action_dimension: int Number of continuous action dimensions
+    continuous_action_dimension: int Number of continuous action dimensions
         (Note: suppose a network outputs a distribution for each
-        continuous dimension like [mean,std], then the continious_action_dimension
+        continuous dimension like [mean,std], then the continuous_action_dimension
         should be set to 2*n_action_dimensions because flexibuff will save
         exactly as many numbers as specified here)
     path: String the path to where flexibuff will be saved if a path is not

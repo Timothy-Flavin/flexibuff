@@ -71,7 +71,7 @@ if __name__ == "__main__":
         obs_size=3,
         action_mask=True,
         discrete_action_cardinalities=[2, 3],
-        continious_action_dimension=2,
+        continuous_action_dimension=2,
         path="./test_save/",
         name="all_attributes",
         n_agents=2,
