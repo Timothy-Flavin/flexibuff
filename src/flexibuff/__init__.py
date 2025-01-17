@@ -184,100 +184,64 @@ class FlexibleBuffer:
     def __init__(
         self,
         num_steps: int = 10,
-        obs_size: int = 1,
-        action_mask=False,
-        discrete_action_cardinalities=None,
-        continuous_action_dimension=None,
+        n_agents=5,
+        action_mask_cardonalities=None,  # None if not discrete action masks are to be recorded
         path: str = "./default_dir/",
         name: str = "flexibuff_test",
-        n_agents: int = 1,
-        state_size: int = None,
-        global_reward: bool = False,
-        global_auxiliary_reward: bool = False,
-        individual_reward: bool = False,
-        individual_auxiliary_reward: bool = False,
-        log_prob_discrete: bool = False,  #
-        log_prob_continuous: int = 0,  # int
         memory_weights: bool = False,
+        global_registered_vars={
+            "global_rewards": (None, np.float32),
+            "state": {[59], np.float32},
+            "state_": {[59], np.float32},
+        },
+        individual_registered_vars={
+            "ind_value_estimates": {None, np.float32},
+            "individual_rewards": {None, np.float32},
+            "obs": {[59], np.float32},
+            "obs_": {[59], np.float32},
+            "discrete_log_probs": {None, np.float32},
+            "continuous_log_probs": {None, np.float32},
+            "discrete_actions": {[3], np.int32},
+            "continuous_actions": {[2], np.float32},
+        },
     ):
-        # assert (
-        #    discrete_action_cardinalities is not None
-        #    or continuous_action_dimension is not None
-        # ), "'discrete_action_cardinalities' and 'continuous_action_dimension' \
-        #    must not both be None so actions may be saved"
-
         self.num_agents = n_agents
         self.num_steps = num_steps
         self.path = path
         self.name = name
-        self.discrete_action_cardinalities = discrete_action_cardinalities
-        self.continuous_action_dimension = continuous_action_dimension
+        self.action_mask_cardonalities = action_mask_cardonalities
         self.mem_size = num_steps
-        self.obs = np.zeros((n_agents, num_steps, obs_size), dtype=np.float32)
-        self.obs_ = np.zeros((n_agents, num_steps, obs_size), dtype=np.float32)
 
         # For memory weighting
         self.memory_weights = None
         if memory_weights:
             self.memory_weights = np.ones(num_steps, dtype=np.float32)
+        self.irvs = []
+        self.grvs = []
+        # "terminated","memory_weights",
 
-        # State for CTDE
-        self.state_size = state_size
-        self.state = None
-        self.state_ = None
-        if state_size is not None:
-            self.state = np.zeros((num_steps, state_size), dtype=np.float32)
-            self.state_ = np.zeros((num_steps, state_size), dtype=np.float32)
-
-        # If we have discrete actions set up discrete action buffer
-        self.discrete_actions = None
-        if discrete_action_cardinalities is not None:
-            self.discrete_actions = np.zeros(
-                (n_agents, num_steps, len(discrete_action_cardinalities)),
-                dtype=np.int32,
-            )
-        self.discrete_log_probs = None
-        if log_prob_discrete:
-            self.discrete_log_probs = -1.0 * np.ones(
-                (n_agents, num_steps, len(discrete_action_cardinalities)),
-                dtype=np.float32,
+        for grv_key in global_registered_vars.keys():
+            self.grvs.append(grv_key)
+            shape = [num_steps]
+            if global_registered_vars[grv_key][0] is not None:
+                shape = shape + global_registered_vars[grv_key][0]
+            self.__dict__[grv_key] = np.zeros(
+                shape, dtype=global_registered_vars[grv_key][0]
             )
 
-        # If we have continuous actions set up continuous buffer
-        self.continuous_actions = None
-        if continuous_action_dimension is not None:
-            self.continuous_actions = np.zeros(
-                (n_agents, num_steps, continuous_action_dimension),
-                dtype=np.float32,
-            )
-        self.continuous_log_probs = None
-        if log_prob_continuous > 0:
-            self.continuous_log_probs = -1 * np.ones(
-                (n_agents, num_steps, log_prob_continuous),
-                dtype=np.float32,
-            )
-
-        # Set up reward buffers
-        self.global_rewards = None
-        self.global_auxiliary_rewards = None
-        self.individual_rewards = None
-        self.individual_auxiliary_rewards = None
-
-        if global_reward:
-            self.global_rewards = np.zeros(num_steps, dtype=np.float32)
-        if global_auxiliary_reward:
-            self.global_auxiliary_rewards = np.zeros(num_steps, dtype=np.float32)
-        if individual_reward:
-            self.individual_rewards = np.zeros((n_agents, num_steps), dtype=np.float32)
-        if individual_auxiliary_reward:
-            self.individual_auxiliary_rewards = np.zeros(
-                (n_agents, num_steps), dtype=np.float32
+        for irv_key in individual_registered_vars.keys():
+            self.irvs.append(irv_key)
+            shape = [n_agents, num_steps]
+            if individual_registered_vars[irv_key][0] is not None:
+                shape = shape + individual_registered_vars[irv_key][0]
+            self.__dict__[irv_key] = np.zeros(
+                shape, dtype=global_registered_vars[grv_key][0]
             )
 
         # Create action masks
         self.action_mask = None
         self.action_mask_ = None
-        if action_mask:
+        if action_mask_cardonalities is not None:
             self.action_mask = []
             self.action_mask_ = []
             for dac in self.discrete_action_cardinalities:
@@ -300,23 +264,6 @@ class FlexibleBuffer:
 
         self.episode_inds = None  # Track for efficient sampling later
         self.episode_lens = None
-
-        self.array_like_params = [
-            "obs",
-            "obs_",
-            "state",
-            "state_",
-            "global_rewards",
-            "global_auxiliary_rewards",
-            "individual_rewards",
-            "individual_auxiliary_rewards",
-            "discrete_actions",
-            "continuous_actions",
-            "discrete_log_probs",
-            "continuous_log_probs",
-            "terminated",
-            "memory_weights",
-        ]
 
     def _between(self, num, lastidx, idx):
         lower = lastidx
@@ -352,22 +299,23 @@ class FlexibleBuffer:
 
     def save_transition(
         self,
-        obs=None,
-        obs_=None,
         terminated=None,
-        discrete_actions=None,
-        continuous_actions=None,
-        global_reward=None,
-        global_auxiliary_reward=None,
-        individual_rewards=None,
-        individual_auxiliary_rewards=None,
         action_mask=None,
         action_mask_=None,
-        state=None,
-        state_=None,
-        discrete_log_probs=None,
-        continuous_log_probs=None,
         memory_weight=1.0,
+        registered_vals={
+            "global_rewards": 1.0,
+            "state": np.ones(59),
+            "state_": np.ones(59) + 1,
+            "ind_value_estimates": np.ones(5),
+            "individual_rewards": np.ones(5) + 1,
+            "obs": np.ones((5, 59)) - 2,
+            "obs_": np.ones((5, 59)) - 3,
+            "discrete_log_probs": -np.ones(5),
+            "continuous_log_probs": np.ones(5) - 3,
+            "discrete_actions": np.zeros((5, 3), dtype=np.int32),
+            "continuous_actions": np.zeros((5, 2)) + 0.5,
+        },
     ):
         """
         Saves a step into the multi-agent memory buffer
@@ -401,58 +349,26 @@ class FlexibleBuffer:
 
         self.idx = self.idx % self.mem_size
 
-        if self.obs is not None:
-            if obs is None:
+        for k in self.irvs:
+            if k not in registered_vals:
                 warnings.warn(
-                    f"Warning, setting FlexibleBuffer.obs[{self.idx}] to nans because keyword argument obs=None"
+                    f"Warning, individual registered value '{k}' not present in registered values so it is not being updated"
                 )
-            self.obs[:, self.idx] = np.array(obs)
-            if obs_ is None:
+        for k in self.grvs:
+            if k not in registered_vals:
                 warnings.warn(
-                    f"Warning, setting FlexibleBuffer.obs_[{self.idx}] to nans because keyword argument obs_=None"
+                    f"Warning, global registered value '{k}' not present in registered values so it is not being updated"
                 )
-            self.obs_[:, self.idx] = np.array(obs_)
 
-        if self.discrete_actions is not None:
-            if discrete_actions is None:
+        for k in registered_vals.keys():
+            if k in self.irvs:
+                self.__dict__[k][:, self.idx] = registered_vals[k]
+            elif k in self.grvs:
+                self.__dict__[k][self.idx] = registered_vals[k]
+            else:
                 warnings.warn(
-                    f"Warning, setting FlexibleBuffer.discrete_actions[{self.idx}] to nans because keyword argument discrete_actions=None"
+                    f"Warning, passed value '{k}' not present in self individual or global values. Make sure it was registered at init()"
                 )
-            self.discrete_actions[:, self.idx] = np.array(discrete_actions)
-        if self.continuous_actions is not None:
-            if continuous_actions is None:
-                warnings.warn(
-                    f"Warning, setting FlexibleBuffer.continuous_actions[{self.idx}] to nans because keyword argument continuous_actions=None"
-                )
-            self.continuous_actions[:, self.idx] = continuous_actions
-
-        if self.global_rewards is not None:
-            if global_reward is None:
-                warnings.warn(
-                    f"Warning, setting FlexibleBuffer.global_rewards[{self.idx}] to nan because keyword argument global_rewards=None"
-                )
-            self.global_rewards[self.idx] = global_reward
-        if self.global_auxiliary_rewards is not None:
-            if global_auxiliary_reward is None:
-                warnings.warn(
-                    f"Warning, setting FlexibleBuffer.global_auxiliary_rewards[{self.idx}] to nan because keyword argument global_auxiliary_rewards=None"
-                )
-            self.global_auxiliary_rewards[self.idx] = global_auxiliary_reward
-
-        if self.individual_rewards is not None:
-            if individual_rewards is None:
-                warnings.warn(
-                    f"Warning, setting FlexibleBuffer.individual_rewards[{self.idx}] to nan because keyword argument individual_rewards=None"
-                )
-            self.individual_rewards[:, self.idx] = np.array(individual_rewards)
-        if self.individual_auxiliary_rewards is not None:
-            if individual_auxiliary_rewards is None:
-                warnings.warn(
-                    f"Warning, setting FlexibleBuffer.individual_auxiliary_rewards[{self.idx}] to nan because keyword argument individual_auxiliary_rewards=None"
-                )
-            self.individual_auxiliary_rewards[:, self.idx] = np.array(
-                individual_auxiliary_rewards
-            )
 
         if self.action_mask is not None:
             if action_mask is None or action_mask_ is None:
@@ -466,35 +382,6 @@ class FlexibleBuffer:
                 for i, dac in enumerate(self.discrete_action_cardinalities):
                     self.action_mask[i][:, self.idx] = action_mask[i]
                     self.action_mask_[i][:, self.idx] = action_mask_[i]
-
-        if self.state is not None:
-            if state is None:
-                warnings.warn(
-                    f"Warning, setting FlexibleBuffer.state[{self.idx}] to nan because keyword argument state=None"
-                )
-            self.state[self.idx] = np.array(state)
-            if state_ is None:
-                warnings.warn(
-                    f"Warning, setting FlexibleBuffer.state_[{self.idx}] to nan because keyword argument state_=None"
-                )
-            self.state_[self.idx] = np.array(state_)
-
-        if self.discrete_log_probs is not None:
-            if discrete_log_probs is None:
-                warnings.warn(
-                    f"Warning, setting FlexibleBuffer.discrete_log_probs[{self.idx}] to nan because keyword argument discrete_log_probs=None"
-                )
-                self.discrete_log_probs[:, self.idx] = np.nan
-            else:
-                self.discrete_log_probs[:, self.idx] = np.array(discrete_log_probs)
-        if self.continuous_log_probs is not None:
-            if continuous_log_probs is None:
-                warnings.warn(
-                    f"Warning, setting FlexibleBuffer.continuous_log_probs[{self.idx}] to nan because keyword argument continuous_log_probs=None"
-                )
-                self.continuous_log_probs[:, self.idx] = np.nan
-            else:
-                self.continuous_log_probs[:, self.idx] = np.array(continuous_log_probs)
 
         if self.memory_weights is not None:
             self.memory_weights[self.idx] = memory_weight
@@ -625,6 +512,7 @@ class FlexibleBuffer:
             f"obs: {self.obs[idx]} | obs_ {self.obs_[idx]}, action: {self.discrete_actions[idx]}, reward: {self.global_rewards[idx]}, done: {self.terminated[idx]}, legal: {self.action_mask[idx]}, legal_: {self.action_mask_[idx]}"
         )
 
+    @staticmethod
     def G(rewards: torch.Tensor, terminated: torch.Tensor, last_value=0, gamma=0.99):
         G = torch.zeros_like(rewards).to(rewards.device)
         G[-1] = rewards[-1]
@@ -636,6 +524,7 @@ class FlexibleBuffer:
         G = G.unsqueeze(-1)
         return G
 
+    @staticmethod
     def GAE(
         rewards: torch.Tensor,
         values: torch.Tensor,
@@ -664,6 +553,7 @@ class FlexibleBuffer:
 
         return G.unsqueeze(-1), advantages.unsqueeze(-1)
 
+    @staticmethod
     def K_Step_TD(
         rewards: torch.Tensor,
         values: torch.Tensor,
@@ -697,82 +587,6 @@ class FlexibleBuffer:
             G[step] = v
             # print(-step - 1)
         return G.unsqueeze(-1), (G - values).unsqueeze(-1)
-
-    # def save_to_drive(self):
-    #     if not os.path.exists(self.path):
-    #         print(f"Path did not exist so making '{self.path}'")
-    #         os.makedirs(self.path)
-
-    #     np.save(self.path + self.name + "_idx.npy", np.array(self.idx))
-    #     np.save(
-    #         self.path + self.name + "_steps_recorded.npy", np.array(self.steps_recorded)
-    #     )
-    #     np.save(self.path + self.name + "_mem_size.npy", np.array(self.mem_size))
-
-    #     for param in self.array_like_params:
-    #         if self.__dict__[param] is not None:
-    #             np.save(
-    #                 self.path + self.name + "_" + param + ".npy", self.__dict__[param]
-    #             )
-
-    #     for i, dac in enumerate(self.discrete_action_cardinalities):
-    #         if self.action_mask is not None:
-    #             np.save(
-    #                 self.path + self.name + f"_action_mask{i}.npy", self.action_mask[i]
-    #             )
-    #             np.save(
-    #                 self.path + self.name + f"_action_mask_{i}.npy",
-    #                 self.action_mask_[i],
-    #             )
-
-    #     if self.discrete_actions is not None:
-    #         np.save(
-    #             self.path + self.name + "_discrete_action_cardinalities.npy",
-    #             np.array(self.discrete_action_cardinalities),
-    #         )
-
-    # def load_from_drive(self, set_sizes=True):
-    #     if not os.path.exists(self.path):
-    #         print(f"path '{self.path}' does not exist yet. returning")
-    #         return
-    #     self.idx = np.load(self.path + self.name + "_idx.npy")
-    #     self.steps_recorded = np.load(self.path + self.name + "_steps_recorded.npy")
-
-    #     for param in self.array_like_params:
-    #         if os.path.exists(self.path + self.name + "_" + param + ".npy"):
-    #             self.__dict__[param] = np.load(
-    #                 self.path + self.name + "_" + param + ".npy"
-    #             )
-    #         else:
-    #             print(self.path + self.name + "_" + param + ".npy was not found")
-    #             self.__dict__[param] = None
-
-    #     for i, dac in enumerate(self.discrete_action_cardinalities):
-    #         if os.path.exists(
-    #             self.path + self.name + f"_action_mask{i}.npy"
-    #         ) and os.path.exists(self.path + self.name + f"_action_mask_{i}.npy"):
-    #             self.action_mask[i] = np.load(
-    #                 self.path + self.name + f"_action_mask{i}.npy"
-    #             )
-    #             self.action_mask_[i] = np.load(
-    #                 self.path + self.name + f"_action_mask_{i}.npy"
-    #             )
-    #         else:
-    #             print(self.path + self.name + f"_action_mask{i}.npy not found")
-    #             self.action_mask = None
-    #             self.action_mask_ = None
-    #             break
-    #     if os.path.exists(self.path + self.name + "_discrete_action_cardinalities.npy"):
-    #         self.discrete_action_cardinalities = np.load(
-    #             self.path + self.name + "_discrete_action_cardinalities.npy"
-    #         )
-
-    #     self.episode_inds = np.load(
-    #         self.path + self.name + "_episode_inds.npy"
-    #     ).tolist()
-    #     self.episode_lens = np.load(
-    #         self.path + self.name + "_episode_lens.npy"
-    #     ).tolist()
 
     @staticmethod
     def load(path, name):
