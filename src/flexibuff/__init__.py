@@ -148,18 +148,18 @@ class FlexibleBuffer:
         memory_weights: bool = False,
         global_registered_vars={
             "global_rewards": (None, np.float32),
-            "state": {[59], np.float32},
-            "state_": {[59], np.float32},
+            "state": ([59], np.float32),
+            "state_": ([59], np.float32),
         },
         individual_registered_vars={
-            "ind_value_estimates": {None, np.float32},
-            "individual_rewards": {None, np.float32},
-            "obs": {[59], np.float32},
-            "obs_": {[59], np.float32},
-            "discrete_log_probs": {None, np.float32},
-            "continuous_log_probs": {None, np.float32},
-            "discrete_actions": {[3], np.int32},
-            "continuous_actions": {[2], np.float32},
+            "ind_value_estimates": (None, np.float32),
+            "individual_rewards": (None, np.float32),
+            "obs": ([59], np.float32),
+            "obs_": ([59], np.float32),
+            "discrete_log_probs": (None, np.float32),
+            "continuous_log_probs": (None, np.float32),
+            "discrete_actions": ([3], np.int32),
+            "continuous_actions": ([2], np.float32),
         },
     ):
         self.num_agents = n_agents
@@ -184,7 +184,7 @@ class FlexibleBuffer:
             if global_registered_vars[grv_key][0] is not None:
                 shape = shape + global_registered_vars[grv_key][0]
             self.__dict__[grv_key] = np.zeros(
-                shape, dtype=global_registered_vars[grv_key][0]
+                shape=shape, dtype=global_registered_vars[grv_key][1]
             )
 
         for irv_key in individual_registered_vars.keys():
@@ -193,13 +193,13 @@ class FlexibleBuffer:
             if individual_registered_vars[irv_key][0] is not None:
                 shape = shape + individual_registered_vars[irv_key][0]
             self.__dict__[irv_key] = np.zeros(
-                shape, dtype=global_registered_vars[grv_key][0]
+                shape=shape, dtype=individual_registered_vars[irv_key][1]
             )
 
         # Create action masks
         self.action_mask = None
         self.action_mask_ = None
-        if self.track_action_mask is not None:
+        if self.track_action_mask:
             self.action_mask = []
             self.action_mask_ = []
             for dac in self.discrete_action_cardinalities:
@@ -320,6 +320,9 @@ class FlexibleBuffer:
 
         for k in registered_vals.keys():
             if k in self.irvs:
+                print(
+                    f"param: {k} in irv: shape{self.__dict__[k][:, self.idx].shape}, registered vals shape: {registered_vals[k].shape}"
+                )
                 self.__dict__[k][:, self.idx] = registered_vals[k]
             elif k in self.grvs:
                 self.__dict__[k][self.idx] = registered_vals[k]
@@ -379,9 +382,9 @@ class FlexibleBuffer:
             action_mask = None
 
         registered_vals = {}
-        for grv in self.grvs.keys():
+        for grv in self.grvs:
             registered_vals[grv] = self.__dict__[grv][idx]
-        for irv in self.irvs.keys():
+        for irv in self.irvs:
             registered_vals[irv] = self.__dict__[irv][:, idx]
 
         fb = FlexiBatch(
@@ -525,9 +528,11 @@ class FlexibleBuffer:
         fb.idx = np.load(path + name + "_idx.npy")
         fb.steps_recorded = np.load(path + name + "_steps_recorded.npy")
         fb.mem_size = np.load(path + name + "_mem_size.npy")
-        fb.track_action_mask = pickle.load(fb.path + fb.name + "track_action_mask")
-        fb.irvs = pickle.load(fb.path + fb.name + "irvs")
-        fb.grvs = pickle.load(fb.path + fb.name + "grvs")
+        fb.track_action_mask = pickle.load(
+            open(fb.path + fb.name + "track_action_mask", "rb")
+        )
+        fb.irvs = pickle.load(open(fb.path + fb.name + "irvs", "rb"))
+        fb.grvs = pickle.load(open(fb.path + fb.name + "grvs", "rb"))
 
         if os.path.exists(path + name + "_discrete_action_cardinalities.npy"):
             fb.discrete_action_cardinalities = np.load(
@@ -575,9 +580,11 @@ class FlexibleBuffer:
         np.save(fb.path + fb.name + "_mem_size.npy", np.array(fb.mem_size))
         np.save(fb.path + fb.name + "_episode_inds.npy", np.array(fb.episode_inds))
         np.save(fb.path + fb.name + "_episode_lens.npy", np.array(fb.episode_lens))
-        pickle.dump(fb.irvs, fb.path + fb.name + "irvs")
-        pickle.dump(fb.grvs, fb.path + fb.name + "grvs")
-        pickle.dump(fb.track_action_mask, fb.path + fb.name + "track_action_mask")
+        pickle.dump(fb.irvs, open(fb.path + fb.name + "irvs", "wb"))
+        pickle.dump(fb.grvs, open(fb.path + fb.name + "grvs", "wb"))
+        pickle.dump(
+            fb.track_action_mask, open(fb.path + fb.name + "track_action_mask", "wb")
+        )
 
         for param in fb.irvs + fb.grvs + ["memory_weights", "terminated"]:
             if fb.__dict__[param] is not None:

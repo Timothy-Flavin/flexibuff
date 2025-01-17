@@ -68,98 +68,112 @@ if __name__ == "__main__":
 
     fb = FlexibleBuffer(
         num_steps=5,
-        obs_size=3,
-        action_mask=True,
+        track_action_mask=True,
         discrete_action_cardinalities=[2, 3],
-        continuous_action_dimension=2,
         path="./test_save/",
         name="all_attributes",
         n_agents=2,
-        state_size=3,
-        global_reward=True,
-        global_auxiliary_reward=True,
-        individual_reward=True,
-        individual_auxiliary_reward=True,
-        log_prob_discrete=True,
-        log_prob_continuous=1,
         memory_weights=True,
+        global_registered_vars={
+            "global_rewards": (None, np.float32),
+            "global_auxiliary_rewards": (None, np.float32),
+            "state": ([3], np.float32),
+            "state_": ([3], np.float32),
+        },
+        individual_registered_vars={
+            "individual_rewards": (None, np.float32),
+            "individual_auxiliary_rewards": (None, np.float32),
+            "discrete_actions": ([2], np.int64),
+            "continuous_actions": ([2], np.float32),
+            "continuous_log_probs": ([1], np.float32),
+            "discrete_log_probs": ([2], np.float32),
+            "obs": ([3], np.float32),
+            "obs_": ([3], np.float32),
+        },
     )
 
     print(obs[:, 0, :])
     print(obs[:, 1, :])
     print(obs[:, 2, :])
-    # print(fb)
+    print(fb)
 
     fb.save_transition(
-        obs=np.copy(obs[:, 1, :]),
-        obs_=np.copy(obs[:, 2, :]),
         terminated=False,
-        discrete_actions=np.array([[0, 1], [1, 2]]),
-        continuous_actions=np.array([[0.1, 0.5], [0.2, 1.0]]),
-        global_reward=1.0,
-        global_auxiliary_reward=0.1,
-        individual_rewards=np.array([0.5, 0.5]),
-        individual_auxiliary_rewards=np.array([0.4, 0.4]),
         action_mask=[np.array([[0, 1], [1, 0]]), np.array([[0, 0, 1], [0, 1, 0]])],
         action_mask_=[np.array([[0, 0], [0, 0]]), np.array([[0, 1, 0], [1, 0, 0]])],
         memory_weight=1.5,
-        continuous_log_probs=[[-0.1], [-0.2]],
-        discrete_log_probs=[[-0.1, -0.1], [-0.2, -0.2]],
-        state=np.copy(obs[0, 0, :]),
-        state_=np.copy(obs[1, 0, :]),
+        registered_vals={
+            "obs": np.copy(obs[:, 1, :]),
+            "obs_": np.copy(obs[:, 2, :]),
+            "discrete_actions": np.array([[0, 1], [1, 2]]),
+            "continuous_actions": np.array([[0.1, 0.5], [0.2, 1.0]]),
+            "global_rewards": 1.0,
+            "global_auxiliary_rewards": 0.1,
+            "individual_rewards": np.array([0.5, 0.5]),
+            "individual_auxiliary_rewards": np.array([0.4, 0.4]),
+            "continuous_log_probs": np.array([[-0.1], [-0.2]]),
+            "discrete_log_probs": np.array([[-0.1, -0.1], [-0.2, -0.2]]),
+            "state": np.copy(obs[0, 0, :]),
+            "state_": np.copy(obs[1, 0, :]),
+        },
     )
 
     fb.save_transition(
-        obs=np.copy(obs[:, 0, :]),
-        obs_=np.copy(obs[:, 1, :]),
         terminated=True,
-        discrete_actions=np.array([[1, 1], [1, 2]]),
-        continuous_actions=np.array([[0.2, 0.6], [0.3, 1.1]]),
-        global_reward=1.1,
-        global_auxiliary_reward=0.2,
-        individual_rewards=np.array([0.6, 0.6]),
-        individual_auxiliary_rewards=np.array([0.5, 0.5]),
         action_mask=[np.array([[0, 1], [1, 0]]), np.array([[0, 0, 1], [0, 1, 0]])],
         action_mask_=[np.array([[0, 0], [0, 0]]), np.array([[0, 1, 0], [1, 0, 0]])],
         memory_weight=1.1,
-        continuous_log_probs=[[-0.2], [-0.3]],
-        discrete_log_probs=[[-0.2, -0.2], [-0.3, -0.3]],
-        state=np.copy(obs[0, 0, :]),
-        state_=np.copy(obs[1, 0, :]),
+        registered_vals={
+            "obs": np.copy(obs[:, 0, :]),
+            "obs_": np.copy(obs[:, 1, :]),
+            "discrete_actions": np.array([[1, 1], [1, 2]]),
+            "continuous_actions": np.array([[0.2, 0.6], [0.3, 1.1]]),
+            "global_rewards": 1.1,
+            "global_auxiliary_rewards": 0.2,
+            "individual_rewards": np.array([0.6, 0.6]),
+            "individual_auxiliary_rewards": np.array([0.5, 0.5]),
+            "continuous_log_probs": np.array([[-0.2], [-0.3]]),
+            "discrete_log_probs": np.array([[-0.2, -0.2], [-0.3, -0.3]]),
+            "state": np.copy(obs[0, 0, :]),
+            "state_": np.copy(obs[1, 0, :]),
+        },
     )
     fb.save_transition(
-        obs=np.copy(obs[:, 0, :]),
-        obs_=np.copy(obs[:, 1, :]),
         terminated=True,
-        discrete_actions=np.array([[1, 1], [1, 2]]),
-        continuous_actions=np.array([[0.2, 0.6], [0.3, 1.1]]),
-        global_reward=1.1,
-        global_auxiliary_reward=0.2,
-        individual_rewards=np.array([0.6, 0.6]),
-        individual_auxiliary_rewards=np.array([0.5, 0.5]),
         action_mask=[np.array([[0, 1], [1, 0]]), np.array([[0, 0, 1], [0, 1, 0]])],
         action_mask_=[np.array([[0, 0], [0, 0]]), np.array([[0, 1, 0], [1, 0, 0]])],
         memory_weight=1.1,
-        continuous_log_probs=[[-0.2], [-0.3]],
-        discrete_log_probs=[[-0.2, -0.2], [-0.3, -0.3]],
-        state=np.copy(obs[0, 0, :]),
-        state_=np.copy(obs[1, 0, :]),
+        registered_vals={
+            "obs": np.copy(obs[:, 0, :]),
+            "obs_": np.copy(obs[:, 1, :]),
+            "discrete_actions": np.array([[1, 1], [1, 2]]),
+            "continuous_actions": np.array([[0.2, 0.6], [0.3, 1.1]]),
+            "global_rewards": 1.1,
+            "global_auxiliary_rewards": 0.2,
+            "individual_rewards": np.array([0.6, 0.6]),
+            "individual_auxiliary_rewards": np.array([0.5, 0.5]),
+            "continuous_log_probs": np.array([[-0.2], [-0.3]]),
+            "discrete_log_probs": np.array([[-0.2, -0.2], [-0.3, -0.3]]),
+            "state": np.copy(obs[0, 0, :]),
+            "state_": np.copy(obs[1, 0, :]),
+        },
     )
+
     FlexibleBuffer.save(fb)
 
     fb2 = FlexibleBuffer.load(
         path="./test_save/",
         name="all_attributes",
     )
+
     samp = fb2.sample_transitions(2, as_torch=False)
     print(samp)
     samp.to_torch("cuda")
-    # print(samp)
+    print(samp)
 
     samp2 = fb2.sample_episodes(2)
-    print(samp2)
+    print(samp2[0])
     # print(fb2)
-
     test_buff = index_tester(10)
     test_buff.report()
     while True:
