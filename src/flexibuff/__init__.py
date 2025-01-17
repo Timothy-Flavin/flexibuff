@@ -238,6 +238,10 @@ class FlexibleBuffer:
             )
         self.discrete_log_probs = None
         if log_prob_discrete:
+            if discrete_action_cardinalities is None:
+                warnings.warn(
+                    "Warning, setting log_prob_discrete to False because discrete_action_cardinalities=None"
+                )
             self.discrete_log_probs = -1.0 * np.ones(
                 (n_agents, num_steps, len(discrete_action_cardinalities)),
                 dtype=np.float32,
