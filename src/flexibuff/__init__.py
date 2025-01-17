@@ -625,6 +625,79 @@ class FlexibleBuffer:
             f"obs: {self.obs[idx]} | obs_ {self.obs_[idx]}, action: {self.discrete_actions[idx]}, reward: {self.global_rewards[idx]}, done: {self.terminated[idx]}, legal: {self.action_mask[idx]}, legal_: {self.action_mask_[idx]}"
         )
 
+    def G(rewards: torch.Tensor, terminated: torch.Tensor, last_value=0, gamma=0.99):
+        G = torch.zeros_like(rewards).to(rewards.device)
+        G[-1] = rewards[-1]
+        if terminated[-1] < 0.5:
+            G[-1] += gamma * last_value
+
+        for i in range(len(rewards) - 2, -1, -1):
+            G[i] = rewards[i] + gamma * G[i + 1] * (1 - terminated[i])
+        G = G.unsqueeze(-1)
+        return G
+
+    def GAE(
+        rewards: torch.Tensor,
+        values: torch.Tensor,
+        terminated: torch.Tensor,
+        last_value=0,
+        gamma=0.99,
+        gae_lambda=0.95,
+    ):
+
+        advantages = torch.zeros_like(rewards).to(rewards.device)
+        num_steps = len(rewards)
+        last_gae_lam = 0
+        for step in reversed(range(num_steps)):
+            if step == num_steps - 1:
+                next_non_terminal = 1.0 - terminated[-1]
+                next_values = last_value
+            else:
+                next_non_terminal = 1.0 - terminated[step]
+                next_values = values[step + 1]
+            delta = (
+                rewards[step] + gamma * next_values * next_non_terminal - values[step]
+            )
+            last_gae_lam = delta + gamma * gae_lambda * next_non_terminal * last_gae_lam
+            advantages[step] = last_gae_lam
+        G = advantages + values
+
+        return G.unsqueeze(-1), advantages.unsqueeze(-1)
+
+    def K_Step_TD(
+        rewards: torch.Tensor,
+        values: torch.Tensor,
+        terminated: torch.Tensor,
+        last_value=0,
+        gamma=0.99,
+        k=1,
+    ):
+        G = torch.zeros_like(rewards).to(rewards.device)
+        n_step = len(rewards)
+        for step in range(n_step - 1, -1, -1):
+            v = 0
+            for i in range(min(k, n_step - step)):
+                if i + step == n_step - 1:
+                    v += gamma ** (i) * rewards[-1] + (
+                        gamma ** (i + 1)
+                    ) * last_value * (1 - terminated[-1])
+
+                else:
+                    if i == k - 1:
+                        v += (gamma ** (i)) * rewards[step + i] + (
+                            gamma ** (i + 1)
+                        ) * values[step + i + 1] * (1 - terminated[step + i])
+
+                    else:
+                        if terminated[step + i]:
+                            v += (gamma**i) * rewards[step + i]
+                            break
+                        else:
+                            v += (gamma**i) * rewards[step + i]
+            G[step] = v
+            # print(-step - 1)
+        return G.unsqueeze(-1), (G - values).unsqueeze(-1)
+
     # def save_to_drive(self):
     #     if not os.path.exists(self.path):
     #         print(f"Path did not exist so making '{self.path}'")

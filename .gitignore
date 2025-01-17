@@ -5,3 +5,5 @@ Learning
 \dist
 \default_dir
 \test_save
+src/flexibuff/__pycache__
+ignore.py
