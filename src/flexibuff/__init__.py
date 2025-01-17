@@ -3,8 +3,8 @@ import torch
 import os
 
 import warnings
-from dataclasses import dataclass
 from typing import Union, Optional
+import pickle
 
 
 class FlexiBatch:
@@ -141,7 +141,8 @@ class FlexibleBuffer:
         self,
         num_steps: int = 10,
         n_agents=5,
-        action_mask_cardonalities=None,  # None if not discrete action masks are to be recorded
+        discrete_action_cardinalities=None,
+        track_action_mask=False,  # True if discrete action masks are to be recorded
         path: str = "./default_dir/",
         name: str = "flexibuff_test",
         memory_weights: bool = False,
@@ -165,7 +166,8 @@ class FlexibleBuffer:
         self.num_steps = num_steps
         self.path = path
         self.name = name
-        self.action_mask_cardonalities = action_mask_cardonalities
+        self.discrete_action_cardinalities = discrete_action_cardinalities
+        self.track_action_mask = track_action_mask
         self.mem_size = num_steps
 
         # For memory weighting
@@ -197,7 +199,7 @@ class FlexibleBuffer:
         # Create action masks
         self.action_mask = None
         self.action_mask_ = None
-        if action_mask_cardonalities is not None:
+        if self.track_action_mask is not None:
             self.action_mask = []
             self.action_mask_ = []
             for dac in self.discrete_action_cardinalities:
@@ -376,55 +378,20 @@ class FlexibleBuffer:
             action_mask_ = None
             action_mask = None
 
+        registered_vals = {}
+        for grv in self.grvs.keys():
+            registered_vals[grv] = self.__dict__[grv][idx]
+        for irv in self.irvs.keys():
+            registered_vals[irv] = self.__dict__[irv][:, idx]
+
         fb = FlexiBatch(
-            obs=self.obs[:, idx] if self.obs is not None else None,
-            obs_=self.obs_[:, idx] if self.obs_ is not None else None,
-            state=self.state[idx] if self.state is not None else None,
-            state_=self.state_[idx] if self.state_ is not None else None,
-            global_rewards=(
-                self.global_rewards[idx] if self.global_rewards is not None else None
-            ),
-            global_auxiliary_rewards=(
-                self.global_auxiliary_rewards[idx]
-                if self.global_auxiliary_rewards is not None
-                else None
-            ),
-            individual_rewards=(
-                self.individual_rewards[:, idx]
-                if self.individual_rewards is not None
-                else None
-            ),
-            individual_auxiliary_rewards=(
-                self.individual_auxiliary_rewards[:, idx]
-                if self.individual_auxiliary_rewards is not None
-                else None
-            ),
-            discrete_actions=(
-                self.discrete_actions[:, idx]
-                if self.discrete_actions is not None
-                else None
-            ),
-            continuous_actions=(
-                self.continuous_actions[:, idx]
-                if self.continuous_actions is not None
-                else None
-            ),
-            discrete_log_probs=(
-                self.discrete_log_probs[:, idx]
-                if self.discrete_log_probs is not None
-                else None
-            ),
-            continuous_log_probs=(
-                self.continuous_log_probs[:, idx]
-                if self.continuous_log_probs is not None
-                else None
-            ),
             action_mask=action_mask,
             action_mask_=action_mask_,
             terminated=self.terminated[idx] if self.terminated is not None else None,
             memory_weights=(
                 self.memory_weights[idx] if self.memory_weights is not None else None
             ),
+            registered_vals=registered_vals,
         )
 
         if as_torch:
@@ -558,13 +525,16 @@ class FlexibleBuffer:
         fb.idx = np.load(path + name + "_idx.npy")
         fb.steps_recorded = np.load(path + name + "_steps_recorded.npy")
         fb.mem_size = np.load(path + name + "_mem_size.npy")
+        fb.track_action_mask = pickle.load(fb.path + fb.name + "track_action_mask")
+        fb.irvs = pickle.load(fb.path + fb.name + "irvs")
+        fb.grvs = pickle.load(fb.path + fb.name + "grvs")
 
         if os.path.exists(path + name + "_discrete_action_cardinalities.npy"):
             fb.discrete_action_cardinalities = np.load(
                 fb.path + fb.name + "_discrete_action_cardinalities.npy"
             )
 
-        for param in fb.array_like_params:
+        for param in fb.irvs + fb.grvs + ["memory_weights", "terminated"]:
             if os.path.exists(fb.path + fb.name + "_" + param + ".npy"):
                 fb.__dict__[param] = np.load(fb.path + fb.name + "_" + param + ".npy")
             else:
@@ -605,20 +575,26 @@ class FlexibleBuffer:
         np.save(fb.path + fb.name + "_mem_size.npy", np.array(fb.mem_size))
         np.save(fb.path + fb.name + "_episode_inds.npy", np.array(fb.episode_inds))
         np.save(fb.path + fb.name + "_episode_lens.npy", np.array(fb.episode_lens))
+        pickle.dump(fb.irvs, fb.path + fb.name + "irvs")
+        pickle.dump(fb.grvs, fb.path + fb.name + "grvs")
+        pickle.dump(fb.track_action_mask, fb.path + fb.name + "track_action_mask")
 
-        for param in fb.array_like_params:
+        for param in fb.irvs + fb.grvs + ["memory_weights", "terminated"]:
             if fb.__dict__[param] is not None:
                 np.save(fb.path + fb.name + "_" + param + ".npy", fb.__dict__[param])
 
-        for i, dac in enumerate(fb.discrete_action_cardinalities):
-            if fb.action_mask is not None:
-                np.save(fb.path + fb.name + f"_action_mask{i}.npy", fb.action_mask[i])
-                np.save(
-                    fb.path + fb.name + f"_action_mask_{i}.npy",
-                    fb.action_mask_[i],
-                )
+        if fb.track_action_mask:
+            for i, dac in enumerate(fb.discrete_action_cardinalities):
+                if fb.action_mask is not None:
+                    np.save(
+                        fb.path + fb.name + f"_action_mask{i}.npy", fb.action_mask[i]
+                    )
+                    np.save(
+                        fb.path + fb.name + f"_action_mask_{i}.npy",
+                        fb.action_mask_[i],
+                    )
 
-        if fb.discrete_actions is not None:
+        if fb.discrete_action_cardinalities is not None:
             np.save(
                 fb.path + fb.name + "_discrete_action_cardinalities.npy",
                 np.array(fb.discrete_action_cardinalities),
@@ -646,40 +622,20 @@ class FlexibleBuffer:
 
     def __str__(self):
         s = f"Buffer size: {self.mem_size}, steps_recorded: {self.steps_recorded}, {self.steps_recorded/self.mem_size*100}%, current idx: {self.idx} \n"
-        s += f"obs: {self.obs is not None}\n"
-        s += f"obs_: {self.obs_ is not None}\n"
-        s += f"state: {self.state is not None}\n"
-        s += f"state_: {self.state_ is not None}\n"
-        s += f"global_rewards: {self.global_rewards is not None}\n"
-        s += f"global_auxiliary_rewards: {self.global_auxiliary_rewards is not None}\n"
-        s += f"individual_rewards: {self.individual_rewards is not None}\n"
-        s += f"individual_auxiliary_rewards: {self.individual_auxiliary_rewards is not None}\n"
-        s += f"discrete_actions: {self.discrete_actions is not None}\n"
         s += f"discrete_action_cardinalities: {self.discrete_action_cardinalities}\n"
-        s += f"continuous_actions: {self.continuous_actions is not None}\n"
-        s += f"discrete_log_probs: {self.discrete_log_probs is not None}\n"
-        s += f"continuous_log_probs: {self.continuous_log_probs is not None}\n"
         s += f"action_mask: {self.action_mask is not None}\n"
         s += f"action_mask_: {self.action_mask_ is not None}\n"
         s += f"terminated: {self.terminated is not None}\n"
         s += f"memory_weights: {self.memory_weights is not None}\n"
+        for param in self.irvs + self.grvs + ["memory_weights", "terminated"]:
+            s += f"{param}: {self.__dict__[param] is not None}\n"
 
-        s += f"obs: {self.obs}\n"
-        s += f"obs_: {self.obs_}\n"
-        s += f"state: {self.state}\n"
-        s += f"state_: {self.state_}\n"
-        s += f"global_rewards: {self.global_rewards}\n"
-        s += f"global_auxiliary_rewards: {self.global_auxiliary_rewards}\n"
-        s += f"individual_rewards: {self.individual_rewards}\n"
-        s += f"individual_auxiliary_rewards: {self.individual_auxiliary_rewards}\n"
-        s += f"discrete_actions: {self.discrete_actions}\n"
-        s += f"continuous_actions: {self.continuous_actions}\n"
-        s += f"discrete_log_probs: {self.discrete_log_probs}\n"
-        s += f"continuous_log_probs: {self.continuous_log_probs}\n"
         s += f"action_mask: {self.action_mask}\n"
         s += f"action_mask_: {self.action_mask_}\n"
         s += f"terminated: {self.terminated}\n"
         s += f"memory_weights: {self.memory_weights}\n"
+        for param in self.irvs + self.grvs + ["memory_weights", "terminated"]:
+            s += f"{param}: {self.__dict__[param]}\n"
         return s
 
     def reset(self):
@@ -689,49 +645,51 @@ class FlexibleBuffer:
         self.episode_lens = None
 
     def summarize_buffer(self):
-        n_elem = (
-            np.size(self.discrete_actions)
-            + np.size(self.obs) * 2
-            + np.size(self.global_rewards)
-            + np.size(self.terminated)
-        )
-        if self.action_mask is not None:
-            n_elem += np.size(self.action_mask) * 2
-        er = ""
-        if self.global_auxiliary_rewards is not None:
-            er = "*2"
-            n_elem += np.size(self.global_auxiliary_rewards)
-        print(
-            f"Buffer size: {self.steps_recorded} / {self.mem_size} steps. Current idx: {self.idx}. discrete_action_cardinalities: {self.discrete_action_cardinalities}, state: {self.obs.shape[1]}"
-        )
-        print(
-            f"Total elements: actions {np.size(self.discrete_actions)} + states {np.size(self.obs)}*2 + rewards {np.size(self.global_rewards)}{er} + legality {np.size(self.action_mask)}*2 + done {np.size(self.terminated)} = {n_elem}"
-        )
+        print("Depricated, doesn't work anymore")
+        return 0
+        # n_elem = (
+        #     np.size(self.discrete_actions)
+        #     + np.size(self.obs) * 2
+        #     + np.size(self.global_rewards)
+        #     + np.size(self.terminated)
+        # )
+        # if self.action_mask is not None:
+        #     n_elem += np.size(self.action_mask) * 2
+        # er = ""
+        # if self.global_auxiliary_rewards is not None:
+        #     er = "*2"
+        #     n_elem += np.size(self.global_auxiliary_rewards)
+        # print(
+        #     f"Buffer size: {self.steps_recorded} / {self.mem_size} steps. Current idx: {self.idx}. discrete_action_cardinalities: {self.discrete_action_cardinalities}, state: {self.obs.shape[1]}"
+        # )
+        # print(
+        #     f"Total elements: actions {np.size(self.discrete_actions)} + states {np.size(self.obs)}*2 + rewards {np.size(self.global_rewards)}{er} + legality {np.size(self.action_mask)}*2 + done {np.size(self.terminated)} = {n_elem}"
+        # )
 
-        if self.steps_recorded == 0:
-            return
+        # if self.steps_recorded == 0:
+        #     return
 
-        start = self.idx % self.steps_recorded
-        rs = []
-        ex_rs = []
-        rs.append(0)
-        ex_rs.append(0)
-        looping = True
-        while looping:
-            if start == self.idx - 1:
-                looping = False
-            rs[-1] += self.global_rewards[start]
-            if self.global_auxiliary_rewards:
-                ex_rs[-1] += self.global_auxiliary_rewards[start]
+        # start = self.idx % self.steps_recorded
+        # rs = []
+        # ex_rs = []
+        # rs.append(0)
+        # ex_rs.append(0)
+        # looping = True
+        # while looping:
+        #     if start == self.idx - 1:
+        #         looping = False
+        #     rs[-1] += self.global_rewards[start]
+        #     if self.global_auxiliary_rewards:
+        #         ex_rs[-1] += self.global_auxiliary_rewards[start]
 
-            if self.terminated[start] == 1:
-                rs.append(0)
-                if self.global_auxiliary_rewards:
-                    ex_rs.append(0)
+        #     if self.terminated[start] == 1:
+        #         rs.append(0)
+        #         if self.global_auxiliary_rewards:
+        #             ex_rs.append(0)
 
-            start += 1
-            start = start % self.steps_recorded
-            # print(start)
-            # print(self.steps_recorded)
+        #     start += 1
+        #     start = start % self.steps_recorded
+        #     # print(start)
+        #     # print(self.steps_recorded)
 
-        print(f"Episode Cumulative Rewards: {rs},\nExpert Rewards: {ex_rs}")
+        # print(f"Episode Cumulative Rewards: {rs},\nExpert Rewards: {ex_rs}")
