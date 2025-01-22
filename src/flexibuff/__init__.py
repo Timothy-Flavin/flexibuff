@@ -320,9 +320,9 @@ class FlexibleBuffer:
 
         for k in registered_vals.keys():
             if k in self.irvs:
-                print(
-                    f"param: {k} in irv: shape{self.__dict__[k][:, self.idx].shape}, registered vals shape: {registered_vals[k].shape}"
-                )
+                # print(
+                #    f"param: {k} in irv: shape{self.__dict__[k][:, self.idx].shape}, registered vals shape: {registered_vals[k].shape}"
+                # )
                 self.__dict__[k][:, self.idx] = registered_vals[k]
             elif k in self.grvs:
                 self.__dict__[k][self.idx] = registered_vals[k]
