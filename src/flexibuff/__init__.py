@@ -17,25 +17,44 @@ class FlexiBatch:
         verbose: bool = True,
         registered_vals: dict = {},
     ):
+        self._registered_vals = {}
         self.action_mask = action_mask
         self.action_mask_ = action_mask_
         self.terminated = terminated
         self.memory_weights = memory_weights
         self.verbose = verbose
-        self._floats = ["terminated", "memory_weights"]
+        self._floats = []
         for rf in registered_vals.keys():
             self._floats.append(rf)
-            self.__dict__[rf] = registered_vals[rf]
+            self._registered_vals[rf] = registered_vals[rf]
+
+    def __getattr__(self, item):
+        if item in self._registered_vals:
+            return self._registered_vals[item]
+        if item in self.__dict__:
+            return self.__dict__[item]
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '{item}'"
+        )
 
     def to_torch(self, device):
         for f in self._floats:
-            self.__dict__[f] = (
+            self._registered_vals[f] = (
                 None
-                if self.__dict__[f] is None
-                else torch.from_numpy(self.__dict__[f]).to(device)
+                if self._registered_vals[f] is None
+                else torch.from_numpy(self._registered_vals[f]).to(device)
+            )
+        if self.terminated is not None:
+            self.terminated = torch.from_numpy(self.terminated).float().to(device)
+        if self.memory_weights is not None:
+            self.memory_weights = (
+                torch.from_numpy(self.memory_weights).float().to(device)
             )
 
         if self.action_mask is not None:
+            assert (
+                self.action_mask_ is not None
+            ), "If action_mask is not None, then action_mask_ must also be set"
             for i, a in enumerate(self.action_mask):
                 self.action_mask[i] = torch.from_numpy(a).float().to(device)
             for i, a in enumerate(self.action_mask_):
@@ -46,7 +65,9 @@ class FlexiBatch:
         s += f"action_mask: {self.action_mask is not None}\n"
         s += f"action_mask_: {self.action_mask_ is not None}\n"
         for f in self._floats:
-            s += f"{f}: {self.__dict__[f] is not None}\n"
+            s += f"{f}: {self._registered_vals[f] is not None}\n"
+        s += f"terminated: {self.terminated is not None}\n"
+        s += f"memory_weights: {self.memory_weights is not None}\n"
 
         if not self.verbose:
             s += " To see preview of the contents of each array set 'verbose' to True"
@@ -55,7 +76,7 @@ class FlexiBatch:
             s += f"action_mask: {self.action_mask}\n"
             s += f"action_mask_: {self.action_mask_}\n"
             for f in self._floats:
-                s += f"{f}: {self.__dict__[f]}\n"
+                s += f"{f}: {self._registered_vals[f]}\n"
         return s
 
 
@@ -162,6 +183,11 @@ class FlexibleBuffer:
             "continuous_actions": ([2], np.float32),
         },
     ):
+        self._registered_vals = {}
+        if track_action_mask:
+            assert (
+                discrete_action_cardinalities is not None
+            ), "If track_action_mask is True, then discrete_action_cardinalities must be set"
         self.num_agents = n_agents
         self.num_steps = num_steps
         self.path = path
@@ -183,7 +209,7 @@ class FlexibleBuffer:
             shape = [num_steps]
             if global_registered_vars[grv_key][0] is not None:
                 shape = shape + global_registered_vars[grv_key][0]
-            self.__dict__[grv_key] = np.zeros(
+            self._registered_vals[grv_key] = np.zeros(
                 shape=shape, dtype=global_registered_vars[grv_key][1]
             )
 
@@ -192,7 +218,7 @@ class FlexibleBuffer:
             shape = [n_agents, num_steps]
             if individual_registered_vars[irv_key][0] is not None:
                 shape = shape + individual_registered_vars[irv_key][0]
-            self.__dict__[irv_key] = np.zeros(
+            self._registered_vals[irv_key] = np.zeros(
                 shape=shape, dtype=individual_registered_vars[irv_key][1]
             )
 
@@ -202,6 +228,10 @@ class FlexibleBuffer:
         if self.track_action_mask:
             self.action_mask = []
             self.action_mask_ = []
+            assert (
+                self.discrete_action_cardinalities is not None
+            ), "If track_action_mask is True, then discrete_action_cardinalities must be set"
+
             for dac in self.discrete_action_cardinalities:
                 self.action_mask.append(
                     np.ones((n_agents, num_steps, dac), dtype=np.float32)
@@ -223,6 +253,15 @@ class FlexibleBuffer:
         self.episode_inds = None  # Track for efficient sampling later
         self.episode_lens = None
 
+    def __getattr__(self, item):
+        if item in self._registered_vals:
+            return self._registered_vals[item]
+        if item in self.__dict__:
+            return self.__dict__[item]
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '{item}'"
+        )
+
     def _between(self, num, lastidx, idx):
         lower = lastidx
         upper = idx
@@ -241,11 +280,14 @@ class FlexibleBuffer:
             self.steps_recorded = idx
         # If nothing has been recorded yet, initialize things
         if self.episode_lens is None and self.episode_inds is None:
-            self.episode_inds = [0]
-            self.episode_lens = []
+            self.episode_inds: list[int] | None = [0]
+            self.episode_lens: list[int] | None = []
             self.episode_lens.append(idx)
             self.episode_inds.append(idx)
         else:
+            assert (self.episode_inds is not None) and (
+                self.episode_lens is not None
+            ), "Episode indices or lengs are None, make sure to initialize them before saving transitions"
             while self._between(self.episode_inds[0], self.episode_inds[-1], idx):
                 self.episode_inds.pop(0)
                 self.episode_lens.pop(0)
@@ -257,7 +299,7 @@ class FlexibleBuffer:
 
     def save_transition(
         self,
-        terminated=None,
+        terminated: Union[bool, int, float] = False,
         action_mask=None,
         action_mask_=None,
         memory_weight=1.0,
@@ -321,17 +363,23 @@ class FlexibleBuffer:
         for k in registered_vals.keys():
             if k in self.irvs:
                 # print(
-                #    f"param: {k} in irv: shape{self.__dict__[k][:, self.idx].shape}, registered vals shape: {registered_vals[k].shape}"
+                #    f"param: {k} in irv: shape{self._registered_vals[k][:, self.idx].shape}, registered vals shape: {registered_vals[k].shape}"
                 # )
-                self.__dict__[k][:, self.idx] = registered_vals[k]
+                self._registered_vals[k][:, self.idx] = registered_vals[k]
             elif k in self.grvs:
-                self.__dict__[k][self.idx] = registered_vals[k]
+                # print(
+                #     f"param: {k} in grv: shape{self._registered_vals[k][self.idx].shape}, registered vals shape: {registered_vals[k].shape}"
+                # )
+                self._registered_vals[k][self.idx] = registered_vals[k]
             else:
                 warnings.warn(
                     f"Warning, passed value '{k}' not present in self individual or global values. Make sure it was registered at init()"
                 )
 
-        if self.action_mask is not None:
+        if self.action_mask is not None and self.action_mask_ is not None:
+            assert (
+                self.discrete_action_cardinalities is not None
+            ), "If action_mask is not None, then discrete_action_cardinalities must be set"
             if action_mask is None or action_mask_ is None:
                 warnings.warn(
                     f"Warning, setting FlexibleBuffer.action_mask[{self.idx}] and/or FlexibleBuffer.action_mask_[{self.idx}] to nan because keyword argument FlexibleBuffer.action_mask=None"
@@ -360,6 +408,9 @@ class FlexibleBuffer:
         size = min(self.steps_recorded, batch_size)
         if idx is None:
             if weighted:
+                assert (
+                    self.memory_weights is not None
+                ), "Memory weights must be set to sample weighted transitions"
                 idx = np.random.choice(
                     min(self.steps_recorded, self.mem_size),
                     size,
@@ -371,7 +422,10 @@ class FlexibleBuffer:
                     min(self.steps_recorded, self.mem_size), size, replace=False
                 )
 
-        if self.action_mask is not None:
+        if self.action_mask is not None and self.action_mask_ is not None:
+            assert (
+                self.discrete_action_cardinalities is not None
+            ), "If action_mask is not None, then discrete_action_cardinalities must be set"
             action_mask = []
             action_mask_ = []
             for i, dac in enumerate(self.discrete_action_cardinalities):
@@ -383,9 +437,9 @@ class FlexibleBuffer:
 
         registered_vals = {}
         for grv in self.grvs:
-            registered_vals[grv] = self.__dict__[grv][idx]
+            registered_vals[grv] = self._registered_vals[grv][idx]
         for irv in self.irvs:
-            registered_vals[irv] = self.__dict__[irv][:, idx]
+            registered_vals[irv] = self._registered_vals[irv][:, idx]
 
         fb = FlexiBatch(
             action_mask=action_mask,
@@ -405,6 +459,11 @@ class FlexibleBuffer:
     def sample_episodes(
         self, max_batch_size=256, as_torch=False, device="cuda", n_episodes=None
     ):
+        if self.episode_inds is None or self.episode_lens is None:
+            warnings.warn(
+                "Episode indices and lengths are not set, returning empty list"
+            )
+            return []
         tempidx = self.episode_inds.copy()
         templen = self.episode_lens.copy()
 
@@ -435,7 +494,10 @@ class FlexibleBuffer:
 
     def print_idx(self, idx):
         print(
-            f"obs: {self.obs[idx]} | obs_ {self.obs_[idx]}, action: {self.discrete_actions[idx]}, reward: {self.global_rewards[idx]}, done: {self.terminated[idx]}, legal: {self.action_mask[idx]}, legal_: {self.action_mask_[idx]}"
+            f"obs: {self.obs[idx]} | obs_ {self.obs_[idx]}, action: {self.discrete_actions[idx]}, reward: {self.global_rewards[idx]}, done: {self.terminated[idx]}"
+            + f", legal: {self.action_mask[idx]}, legal_: {self.action_mask_[idx]}"
+            if self.action_mask is not None and self.action_mask_ is not None
+            else ""
         )
 
     @staticmethod
@@ -518,9 +580,9 @@ class FlexibleBuffer:
     def load(path, name):
         if not os.path.exists(path) or not os.path.exists(path + name + "_idx.npy"):
             print(
-                f"path '{path}' or '{path + name + '_idx.npy'}' does not exist yet. returning"
+                f"path '{path}' or '{path + name + '_idx.npy'}' does not exist yet. returning empty buffer"
             )
-            return
+            return FlexibleBuffer()
         fb = FlexibleBuffer()
         fb.path = path
         fb.name = name
@@ -538,31 +600,44 @@ class FlexibleBuffer:
             fb.discrete_action_cardinalities = np.load(
                 fb.path + fb.name + "_discrete_action_cardinalities.npy"
             )
+        else:
+            fb.discrete_action_cardinalities = None
 
-        for param in fb.irvs + fb.grvs + ["memory_weights", "terminated"]:
+        for param in fb.irvs + fb.grvs:
             if os.path.exists(fb.path + fb.name + "_" + param + ".npy"):
-                fb.__dict__[param] = np.load(fb.path + fb.name + "_" + param + ".npy")
+                fb._registered_vals[param] = np.load(
+                    fb.path + fb.name + "_" + param + ".npy"
+                )
             else:
                 print(fb.path + fb.name + "_" + param + ".npy was not found")
-                fb.__dict__[param] = None
+                fb._registered_vals[param] = None
+        if os.path.exists(fb.path + fb.name + "_terminated.npy"):
+            fb.terminated = np.load(fb.path + fb.name + "_terminated.npy")
+        else:
+            fb.terminated = None
+        if os.path.exists(fb.path + fb.name + "_memory_weights.npy"):
+            fb.memory_weights = np.load(fb.path + fb.name + "_memory_weights.npy")
+        else:
+            fb.memory_weights = None
 
         fb.action_mask = []
         fb.action_mask_ = []
-        for i, dac in enumerate(fb.discrete_action_cardinalities):
-            if os.path.exists(
-                fb.path + fb.name + f"_action_mask{i}.npy"
-            ) and os.path.exists(fb.path + fb.name + f"_action_mask_{i}.npy"):
-                fb.action_mask.append(
-                    np.load(fb.path + fb.name + f"_action_mask{i}.npy")
-                )
-                fb.action_mask_.append(
-                    np.load(fb.path + fb.name + f"_action_mask_{i}.npy")
-                )
-            else:
-                print(fb.path + fb.name + f"_action_mask{i}.npy not found")
-                fb.action_mask = None
-                fb.action_mask_ = None
-                break
+        if fb.track_action_mask and fb.discrete_action_cardinalities is not None:
+            for i, dac in enumerate(fb.discrete_action_cardinalities):
+                if os.path.exists(
+                    fb.path + fb.name + f"_action_mask{i}.npy"
+                ) and os.path.exists(fb.path + fb.name + f"_action_mask_{i}.npy"):
+                    fb.action_mask.append(
+                        np.load(fb.path + fb.name + f"_action_mask{i}.npy")
+                    )
+                    fb.action_mask_.append(
+                        np.load(fb.path + fb.name + f"_action_mask_{i}.npy")
+                    )
+                else:
+                    print(fb.path + fb.name + f"_action_mask{i}.npy not found")
+                    fb.action_mask = None
+                    fb.action_mask_ = None
+                    break
 
         fb.episode_inds = np.load(fb.path + fb.name + "_episode_inds.npy").tolist()
         fb.episode_lens = np.load(fb.path + fb.name + "_episode_lens.npy").tolist()
@@ -586,9 +661,16 @@ class FlexibleBuffer:
             fb.track_action_mask, open(fb.path + fb.name + "track_action_mask", "wb")
         )
 
-        for param in fb.irvs + fb.grvs + ["memory_weights", "terminated"]:
-            if fb.__dict__[param] is not None:
-                np.save(fb.path + fb.name + "_" + param + ".npy", fb.__dict__[param])
+        for param in fb.irvs + fb.grvs:
+            if fb._registered_vals[param] is not None:
+                np.save(
+                    fb.path + fb.name + "_" + param + ".npy", fb._registered_vals[param]
+                )
+
+        if fb.terminated is not None:
+            np.save(fb.path + fb.name + "_terminated.npy", fb.terminated)
+        if fb.memory_weights is not None:
+            np.save(fb.path + fb.name + "_memory_weights.npy", fb.memory_weights)
 
         if fb.track_action_mask:
             for i, dac in enumerate(fb.discrete_action_cardinalities):
@@ -634,15 +716,15 @@ class FlexibleBuffer:
         s += f"action_mask_: {self.action_mask_ is not None}\n"
         s += f"terminated: {self.terminated is not None}\n"
         s += f"memory_weights: {self.memory_weights is not None}\n"
-        for param in self.irvs + self.grvs + ["memory_weights", "terminated"]:
-            s += f"{param}: {self.__dict__[param] is not None}\n"
+        for param in self.irvs + self.grvs:
+            s += f"{param}: {self._registered_vals[param] is not None}\n"
 
         s += f"action_mask: {self.action_mask}\n"
         s += f"action_mask_: {self.action_mask_}\n"
         s += f"terminated: {self.terminated}\n"
         s += f"memory_weights: {self.memory_weights}\n"
-        for param in self.irvs + self.grvs + ["memory_weights", "terminated"]:
-            s += f"{param}: {self.__dict__[param]}\n"
+        for param in self.irvs + self.grvs:
+            s += f"{param}: {self._registered_vals[param]}\n"
         return s
 
     def reset(self):

@@ -11,16 +11,13 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+import numpy as np
 
-device = torch.device(
-    "cuda"
-    if torch.cuda.is_available()
-    else "mps" if torch.backends.mps.is_available() else "cpu"
-)
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 env = gym.make("CartPole-v1")
 # Get number of actions from gym action space
-n_actions = env.action_space.n
+n_actions = env.action_space.n  # type: ignore
 # Get the number of state observations
 state, info = env.reset()
 n_observations = len(state)
@@ -29,12 +26,16 @@ n_observations = len(state)
 # global reward and one discrete action output
 memory = FlexibleBuffer(
     num_steps=10000,
-    obs_size=4,
     discrete_action_cardinalities=[2],
     path="./test_save/",
     name="all_attributes",
     n_agents=1,
-    global_reward=True,
+    global_registered_vars={"global_rewards": (None, np.float32)},
+    individual_registered_vars={
+        "obs": ([n_observations], np.float32),
+        "obs_": ([n_observations], np.float32),
+        "discrete_actions": ([1], np.int64),
+    },
 )
 
 
@@ -51,7 +52,7 @@ class DQN(nn.Module):
         return self.layer3(x)
 
 
-NUM_EPISODES = 5000
+NUM_EPISODES = 800
 BATCH_SIZE = 512
 GAMMA = 0.99
 EPS_START = 0.9
@@ -59,7 +60,7 @@ EPS_END = 0.05
 EPS_DECAY = 1000
 LR = 3e-5
 
-policy_net = DQN(n_observations, n_actions).to(device)
+policy_net = DQN(n_observations, n_actions).to(device).float()
 optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
 steps_done = 0
 
@@ -89,7 +90,11 @@ def select_action(state):
 def optimize_model():
     if memory.steps_recorded < BATCH_SIZE:
         return
-    transitions = memory.sample_transitions(BATCH_SIZE, device=device, torch=True)
+    transitions = memory.sample_transitions(BATCH_SIZE, device=device, as_torch=True)
+    term = transitions.terminated
+    # print(transitions)
+    if term is None:
+        term = torch.zeros((BATCH_SIZE,), dtype=torch.bool, device=device)
     # print(transitions)
     # [0] because we are doing this for just the first agent because there is only one agent
     Q = policy_net(transitions.obs[0]).gather(1, transitions.discrete_actions[0])[:, 0]
@@ -101,7 +106,7 @@ def optimize_model():
         Q_NEXT = (
             GAMMA  # obs [0] because we are only using 1 agent again
             * policy_net(transitions.obs_[0]).max(1).values
-            * (1 - transitions.terminated)  # Terminated and global rewards do
+            * (1 - term)  # Terminated and global rewards do
             + transitions.global_rewards  # not need to be [0] because they
         )  # are for all agents
 
@@ -113,7 +118,7 @@ def optimize_model():
     optimizer.zero_grad()
     loss.backward()
     # In-place gradient clipping
-    torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
+    # torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
     optimizer.step()
 
 
@@ -131,13 +136,13 @@ for i_episode in range(NUM_EPISODES):
 
         # Store the transition in memory which accepts np arrays
         memory.save_transition(
-            obs=state,
-            obs_=state_,
             terminated=terminated,
-            global_reward=reward,
-            discrete_actions=[
-                [action]
-            ],  # 2 [] layers because agent# and action dim# for multiple actions
+            registered_vals={
+                "global_rewards": reward,
+                "obs": [state],
+                "obs_": [state_],
+                "discrete_actions": [[action]],
+            },
         )
 
         # Move to the next state

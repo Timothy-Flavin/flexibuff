@@ -25,7 +25,7 @@ class index_tester:
         else:
             self.steps_recorded = idx
         # If nothing has been recorded yet, initialize things
-        if self.episode_lens is None and self.episode_inds is None:
+        if self.episode_lens is None or self.episode_inds is None:
             self.episode_inds = [0]
             self.episode_lens = []
             self.episode_lens.append(idx)
@@ -161,7 +161,7 @@ if __name__ == "__main__":
 
     FlexibleBuffer.save(fb)
 
-    fb2 = FlexibleBuffer.load(
+    fb2: FlexibleBuffer = FlexibleBuffer.load(
         path="./test_save/",
         name="all_attributes",
     )
